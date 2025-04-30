@@ -4,6 +4,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+import re
 
 # Load environment variables
 load_dotenv()
@@ -28,6 +29,25 @@ if DB_PASSWORD and 'password=' not in DB_URL:
             else:
                 user = user_host[0]
             DB_URL = f"{prefix}://{user}:{DB_PASSWORD}@{user_host[1]}"
+
+# Clean Supabase connection string - remove invalid parameters
+if 'supa' in DB_URL:
+    # Remove any query parameters that psycopg2 doesn't understand
+    if '?' in DB_URL:
+        base_url, query_params = DB_URL.split('?', 1)
+        
+        # Keep only standard PostgreSQL parameters
+        valid_params = []
+        for param in query_params.split('&'):
+            # List of valid psycopg2 parameters
+            if param.split('=')[0] in ['sslmode', 'connect_timeout', 'application_name']:
+                valid_params.append(param)
+        
+        # Reconstruct the URL with only valid parameters
+        if valid_params:
+            DB_URL = f"{base_url}?{'&'.join(valid_params)}"
+        else:
+            DB_URL = base_url
 
 def get_db_connection():
     """Establish a connection to the PostgreSQL database"""
