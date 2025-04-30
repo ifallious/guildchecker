@@ -114,6 +114,9 @@ def get_player_data_from_api(username, cache):
             "timestamp": datetime.now().isoformat()
         }
         
+        # Save cache immediately after updating
+        save_cache(cache)
+        
         return username, guild, highest_level
     except Exception as e:
         print(f"Error fetching data for {username}: {e}")
@@ -148,26 +151,23 @@ def check_player_guilds(max_workers=5, delay=0.2, min_level=0):
     if need_fetch:
         processed = 0
         
-        # Process in batches with multiple threads
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [executor.submit(get_player_data_from_api, username, cache) for username in need_fetch]
+        # Process players one at a time to avoid timeouts
+        for username in need_fetch:
+            username, guild, highest_level = get_player_data_from_api(username, cache)
+            processed += 1
             
-            for future in futures:
-                username, guild, highest_level = future.result()
-                processed += 1
-                
-                results[username] = {
-                    "guild": guild,
-                    "highest_level": highest_level
-                }
-                
-                print(f"Progress: {processed}/{len(need_fetch)} - {username}: Guild: {guild if guild else 'None'}, Level: {highest_level}")
-                
-                # Avoid rate limiting
-                time.sleep(delay)
+            results[username] = {
+                "guild": guild,
+                "highest_level": highest_level
+            }
+            
+            print(f"Progress: {processed}/{len(need_fetch)} - {username}: Guild: {guild if guild else 'None'}, Level: {highest_level}")
+            
+            # Avoid rate limiting
+            time.sleep(delay)
     
-    # Save updated cache
-    save_cache(cache)
+    # We don't need to save cache here anymore as it's saved after each player
+    # save_cache(cache)
     
     return results
 
