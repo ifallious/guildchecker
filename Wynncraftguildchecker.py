@@ -223,11 +223,16 @@ def check_player_guilds(max_workers=5, delay=0.2, min_level=0):
         }
         print(f"Using cached data for {username}: Guild: {player_data['guild'] if player_data['guild'] else 'None'}, Level: {player_data['highest_level']}")
     
-    # Then, process players that need to be fetched (up to 5 max to avoid timeouts)
+    # Then, process players that need to be fetched (up to 25 max to avoid timeouts)
     if need_fetch:
-        # Limit to 5 players per request to avoid timeouts
-        need_fetch = need_fetch[:5]
+        # Calculate how many players we can process based on time constraints
+        # Each player takes about 2-3 seconds to process, so 25 should be safe for Vercel's 60s timeout
+        max_players_to_process = min(150, len(need_fetch))
+        need_fetch = need_fetch[:max_players_to_process]
+        
         processed = 0
+        total_to_process = len(need_fetch)
+        print(f"Processing {total_to_process} players for this request")
         
         # Process players one at a time
         for username in need_fetch:
@@ -239,7 +244,7 @@ def check_player_guilds(max_workers=5, delay=0.2, min_level=0):
                 "highest_level": highest_level
             }
             
-            print(f"Progress: {processed}/{len(need_fetch)} - {username}: Guild: {guild if guild else 'None'}, Level: {highest_level}")
+            print(f"Progress: {processed}/{total_to_process} - {username}: Guild: {guild if guild else 'None'}, Level: {highest_level}")
             
             # Avoid rate limiting
             time.sleep(delay)
@@ -277,6 +282,10 @@ def no_guild_players_api():
     min_level = request.args.get('min_level', default=0, type=int)
     
     try:
+        # Get total number of online players first
+        all_online_players = get_online_players()
+        total_online_players = len(all_online_players)
+        
         # Use fewer workers and longer delay to avoid rate limiting
         results = check_player_guilds(max_workers=10, delay=0.2)
         
@@ -296,7 +305,9 @@ def no_guild_players_api():
             "players": no_guild_players,
             "status": "success",
             "cache_size": cache_size,
-            "checked_players": checked_players_count
+            "checked_players": checked_players_count,
+            "total_online_players": total_online_players,
+            "online_players_processed_percent": round(checked_players_count / total_online_players * 100 if total_online_players > 0 else 0, 1)
         }
         
         return jsonify(response)
@@ -317,6 +328,13 @@ def no_guild_players_api():
         # Sort by level
         cached_no_guild_players.sort(key=lambda x: x["level"], reverse=True)
         
+        # Try to get the total number of online players
+        try:
+            all_online_players = get_online_players()
+            total_online_players = len(all_online_players)
+        except:
+            total_online_players = 0
+        
         # Return a partial response with error information
         response = {
             "timestamp": datetime.now().isoformat(),
@@ -326,7 +344,8 @@ def no_guild_players_api():
             "status": "error",
             "error_message": str(e),
             "cache_size": cache_size,
-            "is_partial_result": True
+            "is_partial_result": True,
+            "total_online_players": total_online_players
         }
         
         return jsonify(response), 500

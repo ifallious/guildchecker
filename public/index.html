@@ -164,6 +164,14 @@
                         statusInfo.className = 'status-info';
                         statusInfo.innerHTML = `Cache contains data for ${data.cache_size} players. The server is automatically refreshing player data in the background.`;
                         resultsSummary.appendChild(statusInfo);
+                        
+                        // Add online player info if available
+                        if (data.total_online_players) {
+                            const onlineInfo = document.createElement('div');
+                            onlineInfo.className = 'status-info';
+                            onlineInfo.innerHTML = `Total online players: ${data.total_online_players}`;
+                            resultsSummary.appendChild(onlineInfo);
+                        }
                     } else {
                         // Normal success case
                         const summaryText = document.createElement('p');
@@ -174,7 +182,18 @@
                         if (data.cache_size) {
                             const statusInfo = document.createElement('div');
                             statusInfo.className = 'status-info';
-                            statusInfo.innerHTML = `Successfully checked ${data.checked_players} online players. Cache contains data for ${data.cache_size} players.`;
+                            
+                            let statusText = `Successfully checked ${data.checked_players} online players. Cache contains data for ${data.cache_size} players.`;
+                            
+                            if (data.total_online_players) {
+                                statusText += `<br>Total online players: ${data.total_online_players}`;
+                                
+                                if (data.online_players_processed_percent) {
+                                    statusText += ` (processed ${data.online_players_processed_percent}%)`;
+                                }
+                            }
+                            
+                            statusInfo.innerHTML = statusText;
                             resultsSummary.appendChild(statusInfo);
                         }
                     }
