@@ -80,6 +80,22 @@
             font-size: 0.9em;
             color: #555;
         }
+        .copy-btn {
+            background-color: #4b2e83;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .copy-btn:hover {
+            background-color: #3b2366;
+        }
+        .copy-success {
+            background-color: #4CAF50;
+            transition: background-color 0.3s;
+        }
     </style>
 </head>
 <body>
@@ -99,6 +115,7 @@
                     <tr>
                         <th>Username</th>
                         <th>Level</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody id="results-body"></tbody>
@@ -124,6 +141,35 @@
             const resultsTable = document.getElementById('results-table');
             const resultsBody = document.getElementById('results-body');
             const resultsSummary = document.getElementById('results-summary');
+
+            // Guild recruitment messages for random selection
+            const recruitmentMessages = [
+                "Hey, how's it going? Are you perhaps looking for a guild?",
+                "Hi there! Interested in joining an active guild with friendly members?",
+                "Hey! We've got an awesome guild with daily events. Want to join us?",
+                "Hello! Looking for a guild with experienced players to help you out?",
+                "Hi! Our guild is recruiting active players. Would you be interested?",
+                "Hey there! Want to join a guild with regular dungeons and territory wars?",
+                "Greetings! Our guild is looking for new members. Interested in joining?",
+                "Hi! We noticed you don't have a guild yet. Want to join ours?",
+                "Hello! Our guild has spots open for active players like you!",
+                "Hey! Looking for a fun guild community? We'd love to have you join us!"
+            ];
+
+            // Function to get a random recruitment message
+            function getRandomMessage() {
+                const randomIndex = Math.floor(Math.random() * recruitmentMessages.length);
+                return recruitmentMessages[randomIndex];
+            }
+
+            // Function to copy text to clipboard
+            function copyToClipboard(text) {
+                navigator.clipboard.writeText(text).then(() => {
+                    console.log('Text copied to clipboard');
+                }).catch(err => {
+                    console.error('Could not copy text: ', err);
+                });
+            }
 
             searchBtn.addEventListener('click', async function() {
                 const minLevel = minLevelInput.value || 0;
@@ -210,8 +256,28 @@
                             const levelCell = document.createElement('td');
                             levelCell.textContent = player.level;
                             
+                            const actionCell = document.createElement('td');
+                            const copyBtn = document.createElement('button');
+                            copyBtn.className = 'copy-btn';
+                            copyBtn.textContent = 'Copy Invite';
+                            copyBtn.addEventListener('click', function() {
+                                const message = `/msg ${player.username} ${getRandomMessage()}`;
+                                copyToClipboard(message);
+                                
+                                // Visual feedback
+                                copyBtn.classList.add('copy-success');
+                                copyBtn.textContent = 'Copied!';
+                                
+                                setTimeout(() => {
+                                    copyBtn.classList.remove('copy-success');
+                                    copyBtn.textContent = 'Copy Invite';
+                                }, 1500);
+                            });
+                            actionCell.appendChild(copyBtn);
+                            
                             row.appendChild(nameCell);
                             row.appendChild(levelCell);
+                            row.appendChild(actionCell);
                             resultsBody.appendChild(row);
                         });
                         
