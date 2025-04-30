@@ -11,7 +11,7 @@ from flask import Flask, jsonify, request, send_from_directory
 # Vercel has a writable /tmp directory that can be used for temporary storage
 is_vercel = os.environ.get('VERCEL', False)
 if is_vercel:
-    CACHE_FILE = '/wynncraft_player_cache.json'
+    CACHE_FILE = '/tmp/wynncraft_player_cache.json'
 else:
     CACHE_FILE = 'wynncraft_player_cache.json'
 
