@@ -8,10 +8,33 @@ from datetime import datetime, timedelta
 CACHE_FILE = '/tmp/wynncraft_player_cache.json'
 
 # Get app URL and token from environment
-APP_URL = os.environ.get('VERCEL_URL', '')
+# Try multiple environment variables that Vercel might use
+APP_URL = os.environ.get('VERCEL_URL', '') or os.environ.get('DEPLOY_URL', '') or os.environ.get('URL', '')
 if APP_URL and not APP_URL.startswith('http'):
     APP_URL = f"https://{APP_URL}"
 CACHE_TOKEN = os.environ.get('CACHE_TOKEN', '')
+
+def debug_cache_info():
+    """Return debug information about the cache configuration"""
+    try:
+        cache_exists = os.path.exists(CACHE_FILE)
+        cache_size = os.path.getsize(CACHE_FILE) if cache_exists else 0
+        cache_data = load_cache() if cache_exists else {}
+        cache_entries = len(cache_data)
+        
+        info = {
+            "cache_file_exists": cache_exists,
+            "cache_file_size_bytes": cache_size,
+            "cache_entries": cache_entries,
+            "app_url_configured": bool(APP_URL),
+            "app_url": APP_URL if APP_URL else "Not configured",
+            "token_configured": bool(CACHE_TOKEN),
+            "tmp_directory_writable": os.access('/tmp', os.W_OK),
+            "tmp_directory_contents": os.listdir('/tmp') if os.path.exists('/tmp') else []
+        }
+        return info
+    except Exception as e:
+        return {"error": str(e)}
 
 def load_cache():
     """Load cached player data from file and restore from backup if needed"""
@@ -34,7 +57,7 @@ def load_cache():
             if CACHE_TOKEN:
                 restore_url += f"?token={CACHE_TOKEN}"
                 
-            response = requests.get(restore_url)
+            response = requests.get(restore_url, timeout=10)  # Add a timeout
             if response.status_code == 200 and response.json():
                 cache = response.json()
                 # Save the restored cache locally

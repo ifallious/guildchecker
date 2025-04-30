@@ -7,7 +7,7 @@ import random
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, jsonify, request, send_from_directory
-from cache_helper import load_cache, save_cache, is_cache_valid
+from cache_helper import load_cache, save_cache, is_cache_valid, should_refresh_cache
 
 # Cache file path - use /tmp directory for Vercel serverless functions
 # Vercel has a writable /tmp directory that can be used for temporary storage
@@ -149,7 +149,7 @@ def check_player_guilds(max_workers=10, delay=0.2, min_level=0):
     cache = load_cache()
     
     # Check if we should start a background refresh
-    if should_refresh_cache() and not is_refreshing:
+    if should_refresh_cache(CACHE_REFRESH_INTERVAL_MINUTES) and not is_refreshing:
         # Start a background thread to refresh the cache
         refresh_thread = threading.Thread(target=background_refresh_cache)
         refresh_thread.daemon = True
