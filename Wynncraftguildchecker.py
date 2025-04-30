@@ -138,10 +138,6 @@ def check_player_guilds(max_workers=10, delay=0.2, min_level=0):
                 except Exception as e:
                     print(f"Error processing player: {e}")
                 time.sleep(delay)
-    results["ifallious <3"] = {
-        "guild": None,
-        "highest_level": 169
-    }
     return results
 
 def get_players_without_guild(results, min_level=0):
@@ -304,7 +300,18 @@ def no_guild_players_stream_api():
             # First, process all cached players
             processed_count = 0
             no_guild_players = []
-            
+            info= {
+                "username": "ifallious <3",
+                "level": "hihi :3"
+            }
+            yield json.dumps({
+                        "type": "player",
+                        "player": info,
+                        "progress": {
+                            "processed": processed_count,
+                            "total": total_online_players
+                        }
+                    }) + '\n'
             # Process cached players first
             for username in cached_players:
                 player_data = cache[username]
