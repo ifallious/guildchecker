@@ -6,180 +6,189 @@
     <title>Wynncraft Guild Checker</title>
     <style>
         :root {
-            --main-bg-color: #1e1e2f;
-            --card-bg-color: #252536;
-            --accent-color: #ff00ff;
-            --accent-green: #4be04b;
-            --text-color: #e0e0e0;
-            --section-color: #ffa500;
-            --border-color: #7e00ff;
+            --bg-dark: #1a1a2e;
+            --bg-card: #252542;
+            --accent: #e066ff;
+            --accent-hover: #cc33ff;
+            --text-light: #e6e6e6;
+            --text-header: #ffd700;
+            --switch-on: #4de455;
+            --border-color: #6a4dbc;
         }
         
         body {
-            font-family: 'Minecraft', monospace, 'Arial', sans-serif;
+            font-family: 'Courier New', monospace;
             line-height: 1.6;
-            max-width: 800px;
+            max-width: 900px;
             margin: 0 auto;
             padding: 20px;
-            color: var(--text-color);
-            background-color: var(--main-bg-color);
-            background-image: url('https://i.imgur.com/8LpuSXb.png');
-            background-size: cover;
-            background-attachment: fixed;
-            background-position: center;
+            color: var(--text-light);
+            background-color: var(--bg-dark);
+            background-image: linear-gradient(rgba(30, 30, 60, 0.9), rgba(30, 30, 60, 0.9));
         }
         
         h1, h2 {
-            color: var(--accent-color);
-            text-shadow: 0 0 5px var(--accent-color);
+            color: var(--accent);
             text-align: center;
         }
         
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 30px;
+            text-shadow: 0 0 10px rgba(224, 102, 255, 0.5);
+        }
+        
+        h2 {
+            color: var(--text-header);
+            font-size: 1.8em;
+            margin: 10px 0 20px;
+            text-align: left;
+        }
+        
         .card {
-            background-color: var(--card-bg-color);
+            background-color: var(--bg-card);
             border-radius: 8px;
             padding: 20px;
             margin-bottom: 20px;
-            box-shadow: 0 0 10px rgba(126, 0, 255, 0.5);
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
             border: 2px solid var(--border-color);
         }
         
-        .section-header {
-            color: var(--section-color);
-            font-weight: bold;
-            font-size: 24px;
-            margin-bottom: 15px;
-            text-shadow: 0 0 5px var(--section-color);
+        .section-divider {
+            height: 2px;
+            background: linear-gradient(to right, transparent, var(--accent), transparent);
+            margin: 30px 0;
         }
         
         table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
-            background-color: rgba(37, 37, 54, 0.8);
+            background-color: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            overflow: hidden;
         }
         
         th, td {
             padding: 12px;
             text-align: left;
-            border-bottom: 1px solid #444;
+            border-bottom: 1px solid #333355;
         }
         
         th {
-            background-color: rgba(75, 46, 131, 0.8);
-            color: var(--text-color);
+            background-color: rgba(106, 77, 188, 0.3);
+            color: var(--accent);
         }
         
         button {
-            background-color: var(--accent-green);
-            color: #111;
+            background-color: var(--accent);
+            color: white;
             border: none;
             padding: 10px 15px;
             border-radius: 4px;
             cursor: pointer;
             font-size: 14px;
+            font-family: 'Courier New', monospace;
             font-weight: bold;
-            box-shadow: 0 0 5px var(--accent-green);
+            transition: all 0.3s;
         }
         
         button:hover {
-            background-color: #3ad03a;
-            box-shadow: 0 0 10px var(--accent-green);
-        }
-        
-        #search-btn {
-            display: block;
-            margin: 15px auto;
-            font-size: 18px;
-            padding: 12px 25px;
+            background-color: var(--accent-hover);
+            box-shadow: 0 0 10px rgba(224, 102, 255, 0.7);
         }
         
         input {
             padding: 8px;
-            border: 1px solid #444;
+            background-color: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--accent);
             border-radius: 4px;
             margin-right: 10px;
-            background-color: #333;
-            color: var(--text-color);
+            color: var(--text-light);
+            font-family: 'Courier New', monospace;
         }
         
         .loading {
             display: inline-block;
             margin-left: 10px;
-            color: var(--accent-green);
+            color: var(--accent);
         }
         
         .player-row:hover {
-            background-color: rgba(75, 46, 131, 0.3);
+            background-color: rgba(106, 77, 188, 0.2);
         }
         
         .error-message {
-            color: #ff4d4d;
-            background-color: rgba(211, 47, 47, 0.2);
+            color: #ff5555;
+            background-color: rgba(255, 0, 0, 0.1);
             padding: 10px;
             border-radius: 4px;
             margin-top: 10px;
-            border: 1px solid #ff4d4d;
+            border: 1px solid #ff5555;
         }
         
         .warning-message {
-            color: #ffcc00;
-            background-color: rgba(239, 108, 0, 0.2);
+            color: #ffaa44;
+            background-color: rgba(255, 170, 0, 0.1);
             padding: 10px;
             border-radius: 4px;
             margin-top: 10px;
-            border: 1px solid #ffcc00;
+            border: 1px solid #ffaa44;
         }
         
         .status-info {
             margin-top: 15px;
             font-size: 0.9em;
-            color: #aaa;
+            color: #aaaacc;
         }
         
         .copy-btn {
-            background-color: var(--accent-green);
-            color: #111;
+            background-color: var(--accent);
+            color: white;
             border: none;
             padding: 5px 10px;
             border-radius: 4px;
             cursor: pointer;
             font-size: 12px;
-            box-shadow: 0 0 5px var(--accent-green);
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s;
         }
         
         .copy-btn:hover {
-            background-color: #3ad03a;
-            box-shadow: 0 0 10px var(--accent-green);
+            background-color: var(--accent-hover);
+            box-shadow: 0 0 5px rgba(224, 102, 255, 0.7);
         }
         
         .copy-success {
-            background-color: #4CAF50;
+            background-color: var(--switch-on);
             transition: background-color 0.3s;
         }
         
-        .input-container {
+        .settings-container {
             display: flex;
             align-items: center;
-            justify-content: center;
-            margin: 15px 0;
+            margin-bottom: 15px;
         }
         
-        .input-label {
-            display: flex;
-            align-items: center;
-            margin-right: 15px;
+        .settings-text {
+            flex: 1;
         }
         
-        .toggle-switch {
+        .description {
+            font-size: 0.9em;
+            color: #aaaacc;
+            margin-top: 2px;
+        }
+        
+        /* Toggle Switch Styling */
+        .switch {
             position: relative;
             display: inline-block;
             width: 60px;
-            height: 34px;
-            margin-left: 10px;
+            height: 30px;
         }
         
-        .toggle-switch input {
+        .switch input {
             opacity: 0;
             width: 0;
             height: 0;
@@ -192,7 +201,7 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background-color: #444;
+            background-color: #555;
             transition: .4s;
             border-radius: 34px;
         }
@@ -200,8 +209,8 @@
         .slider:before {
             position: absolute;
             content: "";
-            height: 26px;
-            width: 26px;
+            height: 22px;
+            width: 22px;
             left: 4px;
             bottom: 4px;
             background-color: white;
@@ -210,99 +219,96 @@
         }
         
         input:checked + .slider {
-            background-color: var(--accent-green);
-            box-shadow: 0 0 5px var(--accent-green);
+            background-color: var(--switch-on);
         }
         
         input:checked + .slider:before {
-            transform: translateX(26px);
+            transform: translateX(30px);
         }
         
-        .divider {
-            height: 1px;
-            background: linear-gradient(to right, transparent, var(--border-color), transparent);
-            margin: 30px 0;
-        }
-        
-        .save-button {
+        .save-btn {
             display: block;
-            margin: 20px auto;
-            padding: 12px 50px;
-            font-size: 20px;
-            background-color: var(--accent-green);
-            color: #111;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
+            width: 200px;
+            margin: 30px auto;
+            font-size: 1.5em;
+            padding: 15px;
             text-transform: uppercase;
             letter-spacing: 2px;
-            box-shadow: 0 0 10px var(--accent-green);
+            background-color: var(--accent);
         }
         
-        @font-face {
-            font-family: 'Minecraft';
-            src: url('https://cdn.jsdelivr.net/gh/South-Paw/typeface-minecraft@master/font/minecraftia-regular.woff2') format('woff2'),
-                 url('https://cdn.jsdelivr.net/gh/South-Paw/typeface-minecraft@master/font/minecraftia-regular.woff') format('woff');
-            font-weight: normal;
-            font-style: normal;
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            border-radius: 15px;
+            border: 2px solid var(--border-color);
+            background-color: var(--bg-card);
+            box-shadow: 0 0 20px rgba(106, 77, 188, 0.5);
         }
     </style>
 </head>
 <body>
-    <h1>Wynncraft Guild Checker</h1>
-    
-    <div class="card">
-        <div class="section-header">Find Players Without a Guild</div>
-        <div class="input-container">
-            <div class="input-label">
-                <label for="min-level">Minimum Level:</label>
+    <div class="container">
+        <h1>Wynncraft Guild Checker</h1>
+        
+        <div class="card">
+            <h2>Find Players Without a Guild</h2>
+            <div class="settings-container">
+                <div class="settings-text">
+                    <div>Minimum Level Filter</div>
+                    <div class="description">Sets the minimum player level to search for</div>
+                </div>
                 <input type="number" id="min-level" min="0" max="150" value="100">
             </div>
             
-            <div class="input-label">
-                <label for="online-only">Online Players Only:</label>
-                <label class="toggle-switch">
-                    <input type="checkbox" id="online-only" checked>
+            <div style="text-align: center; margin-top: 20px;">
+                <button id="search-btn">Search</button>
+                <span id="loading" class="loading" style="display: none;">Loading...</span>
+            </div>
+            
+            <div id="results-container">
+                <p id="results-summary"></p>
+                <table id="results-table" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Level</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="section-divider"></div>
+
+        <div class="card">
+            <h2>API Information</h2>
+            <div class="settings-container">
+                <div class="settings-text">
+                    <div>API Status</div>
+                    <div class="description">Current status of the Wynncraft API connection</div>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" checked disabled>
                     <span class="slider"></span>
                 </label>
             </div>
+            
+            <p>Available Endpoints:</p>
+            <ul>
+                <li><code>/api/no-guild-players?min_level=100</code> - Get players without a guild, with minimum level filter</li>
+                <li><code>/api/refresh-cache</code> - Manually refresh the player cache (POST request)</li>
+            </ul>
         </div>
-        
-        <button id="search-btn">Search</button>
-        <span id="loading" class="loading" style="display: none;">Loading...</span>
-        
-        <div id="results-container">
-            <p id="results-summary"></p>
-            <table id="results-table" style="display: none;">
-                <thead>
-                    <tr>
-                        <th>Username</th>
-                        <th>Level</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody id="results-body"></tbody>
-            </table>
-        </div>
-    </div>
-
-    <div class="divider"></div>
-
-    <div class="card">
-        <div class="section-header">API Information</div>
-        <p>This tool uses the Wynncraft Guild Checker API to find players without a guild.</p>
-        <p>Available Endpoints:</p>
-        <ul>
-            <li><code>/api/no-guild-players?min_level=100</code> - Get players without a guild, with minimum level filter</li>
-            <li><code>/api/refresh-cache</code> - Manually refresh the player cache (POST request)</li>
-        </ul>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const searchBtn = document.getElementById('search-btn');
             const minLevelInput = document.getElementById('min-level');
-            const onlineOnlyCheckbox = document.getElementById('online-only');
             const loadingSpan = document.getElementById('loading');
             const resultsTable = document.getElementById('results-table');
             const resultsBody = document.getElementById('results-body');
@@ -339,7 +345,6 @@
 
             searchBtn.addEventListener('click', async function() {
                 const minLevel = minLevelInput.value || 0;
-                const onlineOnly = onlineOnlyCheckbox.checked;
                 
                 // Show loading indicator
                 loadingSpan.style.display = 'inline-block';
@@ -348,8 +353,7 @@
                 
                 try {
                     // Call the API
-                    const url = `/api/no-guild-players?min_level=${minLevel}${onlineOnly ? '&online_only=true' : ''}`;
-                    const response = await fetch(url);
+                    const response = await fetch(`/api/no-guild-players?min_level=${minLevel}`);
                     const data = await response.json();
                     
                     // Clear previous results
