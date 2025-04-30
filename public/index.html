@@ -152,6 +152,11 @@
             font-size: 12px;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             transition: all 0.3s;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         
         .copy-btn:hover {
@@ -162,6 +167,12 @@
         .copy-success {
             background-color: var(--switch-on);
             transition: background-color 0.3s;
+        }
+        
+        .copy-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: white;
         }
         
         .settings-container {
@@ -285,7 +296,7 @@
                         <tr>
                             <th>Username</th>
                             <th>Level</th>
-                            <th>Action</th>
+                            <th style="width: 60px;">Action</th>
                         </tr>
                     </thead>
                     <tbody id="results-body"></tbody>
@@ -430,18 +441,34 @@
                             const actionCell = document.createElement('td');
                             const copyBtn = document.createElement('button');
                             copyBtn.className = 'copy-btn';
-                            copyBtn.textContent = 'Copy Invite';
+                            
+                            // Clipboard SVG icon
+                            const clipboardIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                            clipboardIcon.setAttribute('viewBox', '0 0 24 24');
+                            clipboardIcon.innerHTML = '<path d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>';
+                            
+                            // Success checkmark SVG icon
+                            const checkmarkIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                            checkmarkIcon.setAttribute('viewBox', '0 0 24 24');
+                            checkmarkIcon.innerHTML = '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>';
+                            checkmarkIcon.style.display = 'none';
+                            
+                            copyBtn.appendChild(clipboardIcon);
+                            copyBtn.appendChild(checkmarkIcon);
+                            
                             copyBtn.addEventListener('click', function() {
                                 const message = `/msg ${player.username} ${getRandomMessage()}`;
                                 copyToClipboard(message);
                                 
                                 // Visual feedback
                                 copyBtn.classList.add('copy-success');
-                                copyBtn.textContent = 'Copied!';
+                                clipboardIcon.style.display = 'none';
+                                checkmarkIcon.style.display = 'block';
                                 
                                 setTimeout(() => {
                                     copyBtn.classList.remove('copy-success');
-                                    copyBtn.textContent = 'Copy Invite';
+                                    clipboardIcon.style.display = 'block';
+                                    checkmarkIcon.style.display = 'none';
                                 }, 1500);
                             });
                             actionCell.appendChild(copyBtn);
