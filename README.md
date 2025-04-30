@@ -24,8 +24,36 @@ This API provides information about Wynncraft players without a guild, allowing 
 
 - [GitHub](https://github.com/) account
 - [Vercel](https://vercel.com/) account
+- [Supabase](https://supabase.com/) account (for database)
 
-### Step 1: Push your code to GitHub
+### Step 1: Create a Supabase Database
+
+1. Sign up for a free account at [Supabase](https://supabase.com/)
+2. Create a new project
+3. Once the project is created, go to the SQL Editor
+4. Create tables using the following SQL:
+   ```sql
+   CREATE TABLE player_cache (
+       username VARCHAR(64) PRIMARY KEY,
+       guild VARCHAR(64),
+       highest_level INTEGER,
+       timestamp TIMESTAMP
+   );
+
+   CREATE TABLE metadata (
+       key VARCHAR(64) PRIMARY KEY,
+       value JSONB
+   );
+   ```
+5. Alternatively, the application will create these tables automatically on first run
+
+### Step 2: Get Your Database Connection String
+
+1. In your Supabase dashboard, go to Settings > Database
+2. Find your connection string in the "Connection string" section
+3. Copy the connection string. It will look like: `postgres://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres`
+
+### Step 3: Push your code to GitHub
 
 1. Create a new GitHub repository
 2. Initialize git in your local project folder:
@@ -37,7 +65,7 @@ This API provides information about Wynncraft players without a guild, allowing 
    git push -u origin main
    ```
 
-### Step 2: Deploy to Vercel
+### Step 4: Deploy to Vercel
 
 1. Go to [Vercel Dashboard](https://vercel.com/dashboard)
 2. Click "New Project"
@@ -46,11 +74,14 @@ This API provides information about Wynncraft players without a guild, allowing 
    - Framework Preset: Other
    - Build Command: Leave empty
    - Output Directory: Leave empty
-5. Click "Deploy"
+5. Add the following Environment Variables:
+   - `SUPABASE_POSTGRES_URL`: Your Supabase connection string
+   - `SUPABASE_POSTGRES_PASSWORD`: Your Supabase database password
+6. Click "Deploy"
 
 Vercel will automatically detect the Python application and deploy it based on the `vercel.json` configuration.
 
-### Step 3: Test Your API
+### Step 5: Test Your API
 
 Once deployed, you can access your API at the URL provided by Vercel:
 
