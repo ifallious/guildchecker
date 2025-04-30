@@ -88,7 +88,7 @@
             border-radius: 4px;
             cursor: pointer;
             font-size: 14px;
-            font-family: 'Courier New', monospace;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             font-weight: bold;
             transition: all 0.3s;
         }
@@ -105,7 +105,7 @@
             border-radius: 4px;
             margin-right: 10px;
             color: var(--text-light);
-            font-family: 'Courier New', monospace;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         
         .loading {
@@ -150,7 +150,7 @@
             border-radius: 4px;
             cursor: pointer;
             font-size: 12px;
-            font-family: 'Courier New', monospace;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             transition: all 0.3s;
         }
         
@@ -245,6 +245,17 @@
             border: 2px solid var(--border-color);
             background-color: var(--bg-card);
             box-shadow: 0 0 20px rgba(106, 77, 188, 0.5);
+        }
+
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+        }
+
+        /* Firefox */
+        input[type="number"] {
+        -moz-appearance: textfield;
         }
     </style>
 </head>
