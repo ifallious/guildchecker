@@ -6,14 +6,43 @@
     <title>Wynncraft Guild Checker</title>
     <style>
         :root {
-            --bg-dark: #1a1a2e;
-            --bg-card: #252542;
-            --accent: #e066ff;
-            --accent-hover: #cc33ff;
-            --text-light: #e6e6e6;
-            --text-header: #ffd700;
+            --bg-dark: #6b5ca5;
+            --bg-card: #7d71b1;
+            --accent: #e9c46a;
+            --accent-hover: #f4d58d;
+            --text-light: #faf3e0;
+            --text-header: #ffdb69;
             --switch-on: #4de455;
-            --border-color: #6a4dbc;
+            --border-color: #8f7bd0;
+        }
+        
+        @keyframes float {
+            0% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(5deg); }
+            100% { transform: translateY(0px) rotate(0deg); }
+        }
+        
+        @keyframes twinkle {
+            0% { opacity: 0.3; transform: scale(0.8); }
+            50% { opacity: 1; transform: scale(1.2); }
+            100% { opacity: 0.3; transform: scale(0.8); }
+        }
+        
+        .star {
+            position: absolute;
+            background-color: var(--accent);
+            clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+            z-index: -1;
+        }
+        
+        .big-moon {
+            position: fixed;
+            bottom: 10%;
+            right: 5%;
+            width: 400px;
+            height: 400px;
+            z-index: -1;
+            animation: float 15s infinite ease-in-out;
         }
         
         body {
@@ -23,8 +52,24 @@
             margin: 0 auto;
             padding: 20px;
             color: var(--text-light);
-            background-color: var(--bg-dark);
-            background-image: linear-gradient(rgba(30, 30, 60, 0.9), rgba(30, 30, 60, 0.9));
+            background: linear-gradient(to bottom, #9388c7, #a290d9, #b199e6);
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+            z-index: 0;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 50%),
+                radial-gradient(circle at 80% 70%, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 50%);
+            z-index: -1;
         }
         
         h1, h2 {
@@ -35,7 +80,7 @@
         h1 {
             font-size: 2.5em;
             margin-bottom: 30px;
-            text-shadow: 0 0 10px rgba(224, 102, 255, 0.5);
+            text-shadow: 0 0 10px rgba(233, 196, 106, 0.7);
         }
         
         h2 {
@@ -50,8 +95,10 @@
             border-radius: 8px;
             padding: 20px;
             margin-bottom: 20px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            box-shadow: 0 0 20px rgba(0,0,0,0.2);
             border: 2px solid var(--border-color);
+            backdrop-filter: blur(5px);
+            background-color: rgba(125, 113, 177, 0.8);
         }
         
         .section-divider {
@@ -64,7 +111,7 @@
             width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
-            background-color: rgba(0, 0, 0, 0.2);
+            background-color: rgba(107, 92, 165, 0.5);
             border-radius: 8px;
             overflow: hidden;
         }
@@ -72,17 +119,17 @@
         th, td {
             padding: 12px;
             text-align: left;
-            border-bottom: 1px solid #333355;
+            border-bottom: 1px solid rgba(143, 123, 208, 0.5);
         }
         
         th {
-            background-color: rgba(106, 77, 188, 0.3);
+            background-color: rgba(143, 123, 208, 0.3);
             color: var(--accent);
         }
         
         button {
             background-color: var(--accent);
-            color: white;
+            color: #6b5ca5;
             border: none;
             padding: 10px 15px;
             border-radius: 4px;
@@ -95,12 +142,12 @@
         
         button:hover {
             background-color: var(--accent-hover);
-            box-shadow: 0 0 10px rgba(224, 102, 255, 0.7);
+            box-shadow: 0 0 10px rgba(233, 196, 106, 0.7);
         }
         
         input {
             padding: 8px;
-            background-color: rgba(0, 0, 0, 0.3);
+            background-color: rgba(107, 92, 165, 0.5);
             border: 1px solid var(--accent);
             border-radius: 4px;
             margin-right: 10px;
@@ -115,31 +162,31 @@
         }
         
         .player-row:hover {
-            background-color: rgba(106, 77, 188, 0.2);
+            background-color: rgba(143, 123, 208, 0.4);
         }
         
         .error-message {
-            color: #ff5555;
+            color: #ff9f9f;
             background-color: rgba(255, 0, 0, 0.1);
             padding: 10px;
             border-radius: 4px;
             margin-top: 10px;
-            border: 1px solid #ff5555;
+            border: 1px solid #ff9f9f;
         }
         
         .warning-message {
-            color: #ffaa44;
+            color: #ffe0a3;
             background-color: rgba(255, 170, 0, 0.1);
             padding: 10px;
             border-radius: 4px;
             margin-top: 10px;
-            border: 1px solid #ffaa44;
+            border: 1px solid #ffe0a3;
         }
         
         .status-info {
             margin-top: 15px;
             font-size: 0.9em;
-            color: #aaaacc;
+            color: #e1d9ff;
         }
         
         .copy-btn {
@@ -161,7 +208,7 @@
         
         .copy-btn:hover {
             background-color: var(--accent-hover);
-            box-shadow: 0 0 5px rgba(224, 102, 255, 0.7);
+            box-shadow: 0 0 5px rgba(233, 196, 106, 0.7);
         }
         
         .copy-success {
@@ -172,7 +219,7 @@
         .copy-btn svg {
             width: 18px;
             height: 18px;
-            fill: white;
+            fill: #6b5ca5;
         }
         
         .settings-container {
@@ -187,7 +234,7 @@
         
         .description {
             font-size: 0.9em;
-            color: #aaaacc;
+            color: #e1d9ff;
             margin-top: 2px;
         }
         
@@ -254,23 +301,52 @@
             padding: 20px;
             border-radius: 15px;
             border: 2px solid var(--border-color);
-            background-color: var(--bg-card);
+            background-color: rgba(125, 113, 177, 0.8);
             box-shadow: 0 0 20px rgba(106, 77, 188, 0.5);
+            backdrop-filter: blur(5px);
+            position: relative;
+            z-index: 1;
         }
 
         input[type="number"]::-webkit-outer-spin-button,
         input[type="number"]::-webkit-inner-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
+            -webkit-appearance: none;
+            margin: 0;
         }
 
         /* Firefox */
         input[type="number"] {
-        -moz-appearance: textfield;
+            -moz-appearance: textfield;
         }
     </style>
 </head>
 <body>
+    <div id="stars-container"></div>
+    <div class="big-moon">
+        <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="400" height="400" style="transform: rotate(-120deg);" viewBox="0 0 1080 1080" xml:space="preserve">
+            <desc>Created with Fabric.js 5.2.4</desc>
+            <defs>
+            </defs>
+            <g transform="matrix(1 0 0 1 540 540)" id="6cb98247-c81d-41b3-b50b-7cc55d867643">
+            </g>
+            <g transform="matrix(1 0 0 1 540 540)" id="eefb60dc-68b1-4ff8-ac5a-b170dd83e688">
+            <rect style="stroke: none; stroke-width: 1; filter: drop-shadow(0 0 2px rgba(233, 196, 106, 0.7)); stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(255,255,255); fill-rule: nonzero; opacity: 1; visibility: hidden;" vector-effect="non-scaling-stroke" x="-540" y="-540" rx="0" ry="0" width="1080" height="1080"/>
+            </g>
+            <g transform="matrix(11.67 0 0 11.67 483.23 696.37)">
+            <g style="" vector-effect="non-scaling-stroke">
+                    <g transform="matrix(1 0 0 1 4 -13.63)">
+            <path style="filter: drop-shadow(0 0 2px rgba(233, 196, 106, 0.7)); stroke: none; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: #e9c46a; fill-rule: nonzero; opacity: 1;" vector-effect="non-scaling-stroke" transform=" translate(-50, -1002.36)" d="M 52.893094 958.36217 C 28.14722 958.36217 8 978.06291 8 1002.3622 C 8 1026.6615 28.14722 1046.3622 52.893094 1046.3622 C 69.467675 1046.3622 83.977728 1037.5005 91.752561 1024.3622 C 92.193439 1023.5875 92.030774 1022.5197000000001 91.379211 1021.9113 C 90.727648 1021.303 89.650714 1021.2135 88.90761499999999 1021.706 C 83.23872999999999 1025.6353 76.32584399999999 1027.9560000000001 68.83702 1027.9560000000001 C 49.593664 1027.9560000000001 34.07300899999999 1012.7348000000002 34.07300899999999 993.9560100000001 C 34.07300899999999 979.5532100000001 43.211591999999996 967.2626100000001 56.14440499999999 962.2996700000001 C 57.00214999999999 961.9841700000001 57.56977899999999 961.0225700000001 57.43132299999999 960.1195700000001 C 57.292866999999994 959.2164700000001 56.463232999999995 958.46897 55.55036499999999 958.4246700000001 C 54.745740999999995 958.3796700000001 53.905201999999996 958.3646700000002 53.08066999999999 958.3626700000001 C 53.01763999999999 958.36237 52.95571899999999 958.3626700000001 52.89309399999999 958.3626700000001 z" stroke-linecap="round"/>
+            </g>
+                    <g transform="matrix(1 0 0 1 -18.63 49.8)" style="">
+                    <text xml:space="preserve" font-family="'Helvetica Neue', Helvetica, Arial-Unicode, Arial, Sans-serif" font-size="5" font-style="normal" font-weight="bold" style="stroke: none; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(0,0,0); fill-rule: nonzero; opacity: 1; white-space: pre;"><tspan x="-27.37" y="1.57">Created by Nanda Ririz</tspan></text>
+            </g>
+                    <g transform="matrix(1 0 0 1 -19.75 54.8)" style="">
+                    <text xml:space="preserve" font-family="'Helvetica Neue', Helvetica, Arial-Unicode, Arial, Sans-serif" font-size="5" font-style="normal" font-weight="bold" style="stroke: none; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(0,0,0); fill-rule: nonzero; opacity: 1; white-space: pre;"><tspan x="-26.25" y="1.57">from the Noun Project</tspan></text>
+            </g>
+            </g>
+            </g>
+            </svg>
+    </div>
     <div class="container">
         <h1>Wynncraft Guild Checker</h1>
         
@@ -317,6 +393,40 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // Create stars
+            const starsContainer = document.getElementById('stars-container');
+            
+            // Create stars
+            for (let i = 0; i < 25; i++) {
+                createStar();
+            }
+            
+            function createStar() {
+                const star = document.createElement('div');
+                star.className = 'star';
+                
+                // Random position
+                const x = Math.random() * 100;
+                const y = Math.random() * 100;
+                
+                // Random size (20-40px)
+                const size = 20 + Math.random() * 20;
+                
+                // Random animation duration (3-6s)
+                const animDuration = 3 + Math.random() * 3;
+                
+                // Random animation delay
+                const animDelay = Math.random() * 5;
+                
+                star.style.left = `${x}vw`;
+                star.style.top = `${y}vh`;
+                star.style.width = `${size}px`;
+                star.style.height = `${size}px`;
+                star.style.animation = `twinkle ${animDuration}s infinite ${animDelay}s`;
+                
+                starsContainer.appendChild(star);
+            }
+
             const searchBtn = document.getElementById('search-btn');
             const minLevelInput = document.getElementById('min-level');
             const loadingSpan = document.getElementById('loading');
