@@ -189,7 +189,7 @@ def background_refresh_cache():
         print(f"Background refresh: Found {len(all_online_players)} online players, processing {total_to_process}")
         
         # Use thread pool to process players concurrently with a smaller max_workers
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        with ThreadPoolExecutor(max_workers=15) as executor:
             # Submit all tasks at once
             future_to_username = {executor.submit(get_player_data_from_api, username, cache): username for username in players_to_process}
             
@@ -243,7 +243,7 @@ def check_player_guilds(max_workers=10, delay=0.2, min_level=0):
     
     # Then, process players that need to be fetched (up to max_players_to_process)
     if need_fetch:
-        max_players_to_process = min(175, len(need_fetch))
+        max_players_to_process = min(125, len(need_fetch))
         need_fetch = need_fetch[:max_players_to_process]
         
         total_to_process = len(need_fetch)
