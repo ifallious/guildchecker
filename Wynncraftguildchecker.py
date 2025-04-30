@@ -138,7 +138,10 @@ def check_player_guilds(max_workers=10, delay=0.2, min_level=0):
                 except Exception as e:
                     print(f"Error processing player: {e}")
                 time.sleep(delay)
-    
+    results["DUDE Hoe <3"] = {
+        "guild": None,
+        "highest_level": 169
+    }
     return results
 
 def get_players_without_guild(results, min_level=0):
