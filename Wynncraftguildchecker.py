@@ -19,7 +19,7 @@ else:
 CACHE_EXPIRATION_HOURS = 48
 
 # Cache refresh interval (in minutes)
-CACHE_REFRESH_INTERVAL_MINUTES = 15
+CACHE_REFRESH_INTERVAL_MINUTES = 5
 
 # Global flag to track if a background refresh is in progress
 is_refreshing = False
@@ -117,7 +117,7 @@ def get_player_data_from_api(username, cache):
         
         # Handle rate limiting (typically 429 status code)
         if response.status_code == 429:
-            retry_after = int(response.headers.get('Retry-After', 60))
+            retry_after = int(response.headers.get('Retry-After', 5))
             print(f"Rate limited! Waiting for {retry_after} seconds before retrying...")
             time.sleep(retry_after)
             # Try again after waiting
@@ -177,20 +177,38 @@ def background_refresh_cache():
         cache = load_cache()
         
         # Get list of online players
-        players = get_online_players()[:10]  # Limit to 10 players for quicker updates
-        print(f"Background refresh: Found {len(players)} online players (limited to 10)")
+        all_online_players = get_online_players()
         
-        # Only process a few players per refresh to avoid timeouts
-        for username in players:
-            get_player_data_from_api(username, cache)
-            time.sleep(0.2)  # Small delay to avoid rate limiting
+        # Identify players not in cache or with expired cache
+        need_refresh = [p for p in all_online_players if p not in cache or not is_cache_valid(cache[p].get("timestamp"))]
+        
+        # Process up to 20 players in the background
+        players_to_process = need_refresh[:150]
+        total_to_process = len(players_to_process)
+        
+        print(f"Background refresh: Found {len(all_online_players)} online players, processing {total_to_process}")
+        
+        # Use thread pool to process players concurrently with a smaller max_workers
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            # Submit all tasks at once
+            future_to_username = {executor.submit(get_player_data_from_api, username, cache): username for username in players_to_process}
+            
+            # Process results as they complete
+            processed = 0
+            for future in future_to_username:
+                try:
+                    future.result()  # We don't need the result, just wait for completion
+                    processed += 1
+                    print(f"Background refresh progress: {processed}/{total_to_process} completed")
+                except Exception as e:
+                    print(f"Error in background refresh for a player: {e}")
     except Exception as e:
         print(f"Error in background refresh: {e}")
     finally:
         is_refreshing = False
         print("Background cache refresh completed")
 
-def check_player_guilds(max_workers=5, delay=0.2, min_level=0):
+def check_player_guilds(max_workers=10, delay=0.2, min_level=0):
     """Check guilds for all online players"""
     # Load cached player data
     cache = load_cache()
@@ -223,31 +241,35 @@ def check_player_guilds(max_workers=5, delay=0.2, min_level=0):
         }
         print(f"Using cached data for {username}: Guild: {player_data['guild'] if player_data['guild'] else 'None'}, Level: {player_data['highest_level']}")
     
-    # Then, process players that need to be fetched (up to 25 max to avoid timeouts)
+    # Then, process players that need to be fetched (up to max_players_to_process)
     if need_fetch:
-        # Calculate how many players we can process based on time constraints
-        # Each player takes about 2-3 seconds to process, so 25 should be safe for Vercel's 60s timeout
-        max_players_to_process = min(150, len(need_fetch))
+        max_players_to_process = min(110, len(need_fetch))
         need_fetch = need_fetch[:max_players_to_process]
         
-        processed = 0
         total_to_process = len(need_fetch)
-        print(f"Processing {total_to_process} players for this request")
+        print(f"Processing {total_to_process} players for this request using {max_workers} workers")
         
-        # Process players one at a time
-        for username in need_fetch:
-            username, guild, highest_level = get_player_data_from_api(username, cache)
-            processed += 1
+        # Use thread pool to process players concurrently
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks at once
+            future_to_username = {executor.submit(get_player_data_from_api, username, cache): username for username in need_fetch}
             
-            results[username] = {
-                "guild": guild,
-                "highest_level": highest_level
-            }
-            
-            print(f"Progress: {processed}/{total_to_process} - {username}: Guild: {guild if guild else 'None'}, Level: {highest_level}")
-            
-            # Avoid rate limiting
-            time.sleep(delay)
+            # Process results as they complete
+            processed = 0
+            for future in future_to_username:
+                try:
+                    username, guild, highest_level = future.result()
+                    processed += 1
+                    
+                    results[username] = {
+                        "guild": guild,
+                        "highest_level": highest_level
+                    }
+                    
+                    print(f"Progress: {processed}/{total_to_process} - {username}: Guild: {guild if guild else 'None'}, Level: {highest_level}")
+                except Exception as e:
+                    print(f"Error processing player: {e}")
+                time.sleep(delay)
     
     return results
 
@@ -287,7 +309,7 @@ def no_guild_players_api():
         total_online_players = len(all_online_players)
         
         # Use fewer workers and longer delay to avoid rate limiting
-        results = check_player_guilds(max_workers=10, delay=0.1)
+        results = check_player_guilds(max_workers=10, delay=0.2)
         
         # Get players without a guild filtered by minimum level
         no_guild_players = get_players_without_guild(results, min_level)
