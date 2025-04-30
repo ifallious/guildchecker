@@ -2,6 +2,7 @@ import requests
 import time
 import json
 import os
+import threading
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, jsonify, request, send_from_directory
@@ -16,6 +17,12 @@ else:
 
 # Cache expiration time (in hours)
 CACHE_EXPIRATION_HOURS = 48
+
+# Cache refresh interval (in minutes)
+CACHE_REFRESH_INTERVAL_MINUTES = 15
+
+# Global flag to track if a background refresh is in progress
+is_refreshing = False
 
 app = Flask(__name__, static_folder='public')
 
@@ -56,6 +63,38 @@ def is_cache_valid(timestamp_str):
         return cached_time > expiration_time
     except Exception:
         return False
+
+def should_refresh_cache():
+    """Check if the cache needs to be refreshed based on last update time"""
+    try:
+        if not os.path.exists(CACHE_FILE):
+            return True
+            
+        with open(CACHE_FILE, 'r') as f:
+            cache = json.load(f)
+            
+        # If cache is empty, it needs to be refreshed
+        if not cache:
+            return True
+            
+        # Find the most recent timestamp in the cache
+        latest_timestamp = None
+        for player_data in cache.values():
+            if "timestamp" in player_data:
+                timestamp = datetime.fromisoformat(player_data["timestamp"])
+                if latest_timestamp is None or timestamp > latest_timestamp:
+                    latest_timestamp = timestamp
+        
+        # If no valid timestamp is found, cache needs refresh
+        if latest_timestamp is None:
+            return True
+            
+        # Check if the cache is older than the refresh interval
+        refresh_time = datetime.now() - timedelta(minutes=CACHE_REFRESH_INTERVAL_MINUTES)
+        return latest_timestamp < refresh_time
+    except Exception as e:
+        print(f"Error checking if cache needs refresh: {e}")
+        return True
 
 def get_online_players():
     """Get all online players from the Wynncraft API"""
@@ -122,10 +161,47 @@ def get_player_data_from_api(username, cache):
         print(f"Error fetching data for {username}: {e}")
         return username, None, 0
 
+def background_refresh_cache():
+    """Refresh the cache in the background"""
+    global is_refreshing
+    
+    if is_refreshing:
+        print("A refresh is already in progress, skipping this one")
+        return
+    
+    try:
+        is_refreshing = True
+        print("Starting background cache refresh")
+        
+        # Load cached player data
+        cache = load_cache()
+        
+        # Get list of online players
+        players = get_online_players()[:10]  # Limit to 10 players for quicker updates
+        print(f"Background refresh: Found {len(players)} online players (limited to 10)")
+        
+        # Only process a few players per refresh to avoid timeouts
+        for username in players:
+            get_player_data_from_api(username, cache)
+            time.sleep(0.2)  # Small delay to avoid rate limiting
+    except Exception as e:
+        print(f"Error in background refresh: {e}")
+    finally:
+        is_refreshing = False
+        print("Background cache refresh completed")
+
 def check_player_guilds(max_workers=5, delay=0.2, min_level=0):
     """Check guilds for all online players"""
     # Load cached player data
     cache = load_cache()
+    
+    # Check if we should start a background refresh
+    if should_refresh_cache() and not is_refreshing:
+        # Start a background thread to refresh the cache
+        refresh_thread = threading.Thread(target=background_refresh_cache)
+        refresh_thread.daemon = True
+        refresh_thread.start()
+        print("Started background refresh thread")
     
     players = get_online_players()
     print(f"Found {len(players)} online players")
@@ -147,11 +223,13 @@ def check_player_guilds(max_workers=5, delay=0.2, min_level=0):
         }
         print(f"Using cached data for {username}: Guild: {player_data['guild'] if player_data['guild'] else 'None'}, Level: {player_data['highest_level']}")
     
-    # Then, process players that need to be fetched
+    # Then, process players that need to be fetched (up to 5 max to avoid timeouts)
     if need_fetch:
+        # Limit to 5 players per request to avoid timeouts
+        need_fetch = need_fetch[:5]
         processed = 0
         
-        # Process players one at a time to avoid timeouts
+        # Process players one at a time
         for username in need_fetch:
             username, guild, highest_level = get_player_data_from_api(username, cache)
             processed += 1
@@ -165,9 +243,6 @@ def check_player_guilds(max_workers=5, delay=0.2, min_level=0):
             
             # Avoid rate limiting
             time.sleep(delay)
-    
-    # We don't need to save cache here anymore as it's saved after each player
-    # save_cache(cache)
     
     return results
 
@@ -201,21 +276,60 @@ def no_guild_players_api():
     # Get minimum level from query parameter, default to 0
     min_level = request.args.get('min_level', default=0, type=int)
     
-    # Use fewer workers and longer delay to avoid rate limiting
-    results = check_player_guilds(max_workers=10, delay=0.2)
-    
-    # Get players without a guild filtered by minimum level
-    no_guild_players = get_players_without_guild(results, min_level)
-    
-    # Format response
-    response = {
-        "timestamp": datetime.now().isoformat(),
-        "min_level": min_level,
-        "total_players": len(no_guild_players),
-        "players": no_guild_players
-    }
-    
-    return jsonify(response)
+    try:
+        # Use fewer workers and longer delay to avoid rate limiting
+        results = check_player_guilds(max_workers=10, delay=0.2)
+        
+        # Get players without a guild filtered by minimum level
+        no_guild_players = get_players_without_guild(results, min_level)
+        
+        # Get cache stats
+        cache = load_cache()
+        cache_size = len(cache) if cache else 0
+        checked_players_count = len(results)
+        
+        # Format response
+        response = {
+            "timestamp": datetime.now().isoformat(),
+            "min_level": min_level,
+            "total_players": len(no_guild_players),
+            "players": no_guild_players,
+            "status": "success",
+            "cache_size": cache_size,
+            "checked_players": checked_players_count
+        }
+        
+        return jsonify(response)
+    except Exception as e:
+        # Get cache stats even in case of an error
+        cache = load_cache()
+        cache_size = len(cache) if cache else 0
+        
+        # Try to get any players we might have in cache
+        cached_no_guild_players = []
+        for username, data in cache.items():
+            if data.get("guild") is None and data.get("highest_level", 0) >= min_level:
+                cached_no_guild_players.append({
+                    "username": username,
+                    "level": data.get("highest_level", 0)
+                })
+        
+        # Sort by level
+        cached_no_guild_players.sort(key=lambda x: x["level"], reverse=True)
+        
+        # Return a partial response with error information
+        response = {
+            "timestamp": datetime.now().isoformat(),
+            "min_level": min_level,
+            "total_players": len(cached_no_guild_players),
+            "players": cached_no_guild_players,
+            "status": "error",
+            "error_message": str(e),
+            "cache_size": cache_size,
+            "is_partial_result": True
+        }
+        
+        return jsonify(response), 500
 
 @app.route('/api/refresh-cache', methods=['POST'])
 def refresh_cache_api():
