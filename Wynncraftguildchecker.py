@@ -243,7 +243,7 @@ def check_player_guilds(max_workers=10, delay=0.2, min_level=0):
     
     # Then, process players that need to be fetched (up to max_players_to_process)
     if need_fetch:
-        max_players_to_process = min(110, len(need_fetch))
+        max_players_to_process = min(175, len(need_fetch))
         need_fetch = need_fetch[:max_players_to_process]
         
         total_to_process = len(need_fetch)
