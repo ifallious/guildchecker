@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wynncraft Guild Checker</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+        }
+        h1, h2 {
+            color: #4b2e83;
+        }
+        .card {
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        button {
+            background-color: #4b2e83;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #3b2366;
+        }
+        input {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+        .loading {
+            display: inline-block;
+            margin-left: 10px;
+        }
+        .player-row:hover {
+            background-color: #f5f5f5;
+        }
+    </style>
+</head>
+<body>
+    <h1>Wynncraft Guild Checker</h1>
+    <div class="card">
+        <h2>Find Players Without a Guild</h2>
+        <div>
+            <label for="min-level">Minimum Level:</label>
+            <input type="number" id="min-level" min="0" max="150" value="100">
+            <button id="search-btn">Search</button>
+            <span id="loading" class="loading" style="display: none;">Loading...</span>
+        </div>
+        <div id="results-container">
+            <p id="results-summary"></p>
+            <table id="results-table" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Level</th>
+                    </tr>
+                </thead>
+                <tbody id="results-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>API Information</h2>
+        <p>This tool uses the Wynncraft Guild Checker API to find players without a guild.</p>
+        <p>Available Endpoints:</p>
+        <ul>
+            <li><code>/api/no-guild-players?min_level=100</code> - Get players without a guild, with minimum level filter</li>
+            <li><code>/api/refresh-cache</code> - Manually refresh the player cache (POST request)</li>
+        </ul>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchBtn = document.getElementById('search-btn');
+            const minLevelInput = document.getElementById('min-level');
+            const loadingSpan = document.getElementById('loading');
+            const resultsTable = document.getElementById('results-table');
+            const resultsBody = document.getElementById('results-body');
+            const resultsSummary = document.getElementById('results-summary');
+
+            searchBtn.addEventListener('click', async function() {
+                const minLevel = minLevelInput.value || 0;
+                
+                // Show loading indicator
+                loadingSpan.style.display = 'inline-block';
+                resultsTable.style.display = 'none';
+                resultsSummary.textContent = '';
+                
+                try {
+                    // Call the API
+                    const response = await fetch(`/api/no-guild-players?min_level=${minLevel}`);
+                    const data = await response.json();
+                    
+                    // Update results summary
+                    resultsSummary.textContent = `Found ${data.total_players} players without a guild (Level ${data.min_level}+)`;
+                    
+                    // Clear previous results
+                    resultsBody.innerHTML = '';
+                    
+                    // Add results to table
+                    if (data.total_players > 0) {
+                        data.players.forEach(player => {
+                            const row = document.createElement('tr');
+                            row.className = 'player-row';
+                            
+                            const nameCell = document.createElement('td');
+                            nameCell.textContent = player.username;
+                            
+                            const levelCell = document.createElement('td');
+                            levelCell.textContent = player.level;
+                            
+                            row.appendChild(nameCell);
+                            row.appendChild(levelCell);
+                            resultsBody.appendChild(row);
+                        });
+                        
+                        // Show the table
+                        resultsTable.style.display = 'table';
+                    }
+                } catch (error) {
+                    console.error('Error fetching data:', error);
+                    resultsSummary.textContent = 'Error fetching data. Please try again.';
+                } finally {
+                    // Hide loading indicator
+                    loadingSpan.style.display = 'none';
+                }
+            });
+        });
+    </script>
+</body>
+</html> 
