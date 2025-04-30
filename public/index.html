@@ -52,6 +52,23 @@
             100% { opacity: 0.3; transform: scale(0.8) translateY(0px) rotate(0deg); }
         }
         
+        @keyframes fadeInGlow {
+            0% { 
+                opacity: 0; 
+                background-color: rgba(233, 196, 106, 0.3);
+                transform: translateY(5px);
+            }
+            50% { 
+                opacity: 1;
+                background-color: rgba(233, 196, 106, 0.2); 
+                transform: translateY(0);
+            }
+            100% { 
+                opacity: 1;
+                background-color: transparent;
+            }
+        }
+        
         .star {
             position: absolute;
             background-color: var(--accent);
@@ -341,6 +358,27 @@
             z-index: 1;
         }
 
+        .player-row-new {
+            animation: fadeInGlow 1.5s ease-out forwards;
+        }
+        
+        /* Progress bar styles */
+        .progress-bar-container {
+            width: 100%;
+            background-color: rgba(107, 92, 165, 0.3);
+            border-radius: 4px;
+            margin-top: 10px;
+            margin-bottom: 15px;
+            overflow: hidden;
+        }
+        
+        .progress-bar {
+            height: 8px;
+            background-color: var(--accent);
+            width: 0%;
+            transition: width 0.3s ease-in-out;
+        }
+
         input[type="number"]::-webkit-outer-spin-button,
         input[type="number"]::-webkit-inner-spin-button {
             -webkit-appearance: none;
@@ -350,6 +388,30 @@
         /* Firefox */
         input[type="number"] {
             -moz-appearance: textfield;
+        }
+        
+        /* Loading Spinner */
+        .spinner {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(233, 196, 106, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--accent);
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            margin-left: 10px;
+            color: var(--accent);
+            vertical-align: middle;
         }
     </style>
 </head>
@@ -395,7 +457,10 @@
             
             <div style="text-align: center; margin-top: 20px;">
                 <button id="search-btn">Search</button>
-                <span id="loading" class="loading" style="display: none;">Loading...</span>
+                <div id="loading" class="loading" style="display: none;">
+                    <div class="spinner"></div>
+                    <span class="loading-text">Processing...</span>
+                </div>
             </div>
             
             <div id="results-container">
@@ -494,125 +559,263 @@
                 });
             }
 
+            // Create a single player row
+            function createPlayerRow(player) {
+                const row = document.createElement('tr');
+                row.className = 'player-row player-row-new';
+                
+                // Remove the animation class after animation completes
+                setTimeout(() => {
+                    row.classList.remove('player-row-new');
+                }, 1500);
+                
+                const nameCell = document.createElement('td');
+                nameCell.textContent = player.username;
+                
+                const levelCell = document.createElement('td');
+                levelCell.textContent = player.level;
+                
+                const actionCell = document.createElement('td');
+                const copyBtn = document.createElement('button');
+                copyBtn.className = 'copy-btn';
+                
+                const clipboardIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                clipboardIcon.setAttribute('viewBox', '0 0 24 24');
+                clipboardIcon.innerHTML = '<path d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>';
+                
+                const checkmarkIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                checkmarkIcon.setAttribute('viewBox', '0 0 24 24');
+                checkmarkIcon.innerHTML = '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>';
+                checkmarkIcon.style.display = 'none';
+                
+                copyBtn.appendChild(clipboardIcon);
+                copyBtn.appendChild(checkmarkIcon);
+                
+                copyBtn.addEventListener('click', function() {
+                    const message = `/msg ${player.username} ${getRandomMessage()}`;
+                    copyToClipboard(message);
+                    
+                    copyBtn.classList.add('copy-success');
+                    clipboardIcon.style.display = 'none';
+                    checkmarkIcon.style.display = 'block';
+                    
+                    setTimeout(() => {
+                        copyBtn.classList.remove('copy-success');
+                        clipboardIcon.style.display = 'block';
+                        checkmarkIcon.style.display = 'none';
+                    }, 1500);
+                });
+                actionCell.appendChild(copyBtn);
+                
+                row.appendChild(nameCell);
+                row.appendChild(levelCell);
+                row.appendChild(actionCell);
+                
+                return row;
+            }
+
+            // Update progress display
+            function updateProgressDisplay(processed, total, percent) {
+                const progressInfo = document.querySelector('.progress-info') || document.createElement('div');
+                progressInfo.className = 'status-info progress-info';
+                progressInfo.innerHTML = `Processing: ${processed}/${total} players (${percent}%)`;
+                
+                // Add progress bar if it doesn't exist
+                if (!document.querySelector('.progress-bar-container')) {
+                    const progressBarContainer = document.createElement('div');
+                    progressBarContainer.className = 'progress-bar-container';
+                    
+                    const progressBar = document.createElement('div');
+                    progressBar.className = 'progress-bar';
+                    
+                    progressBarContainer.appendChild(progressBar);
+                    
+                    if (document.querySelector('.progress-info')) {
+                        document.querySelector('.progress-info').after(progressBarContainer);
+                    } else {
+                        resultsSummary.appendChild(progressBarContainer);
+                        resultsSummary.appendChild(progressInfo);
+                    }
+                }
+                
+                // Update progress bar
+                const progressBar = document.querySelector('.progress-bar');
+                progressBar.style.width = `${percent}%`;
+                
+                if (!document.querySelector('.progress-info')) {
+                    resultsSummary.appendChild(progressInfo);
+                }
+            }
+
+            // Function to add player with delay for better visual effect
+            async function addPlayerWithDelay(player) {
+                return new Promise(resolve => {
+                    setTimeout(() => {
+                        const playerRow = createPlayerRow(player);
+                        resultsBody.appendChild(playerRow);
+                        resolve();
+                    }, 50); // Small delay (50ms) between each player addition
+                });
+            }
+
+            // Use streaming API to get results
             searchBtn.addEventListener('click', async function() {
                 const minLevel = minLevelInput.value || 0;
                 
+                // Reset UI and show spinner
                 loadingSpan.style.display = 'inline-block';
                 resultsTable.style.display = 'none';
                 resultsSummary.innerHTML = '';
+                resultsBody.innerHTML = '';
+                
+                let playerCount = 0;
+                let foundStatus = document.createElement('div');
+                foundStatus.className = 'status-info found-status';
+                foundStatus.textContent = 'Found 0 players without a guild';
+                resultsSummary.appendChild(foundStatus);
                 
                 try {
-                    const response = await fetch(`/api/no-guild-players?min_level=${minLevel}`);
-                    const data = await response.json();
+                    // Create and initialize EventSource
+                    const response = fetch(`/api/no-guild-players-stream?min_level=${minLevel}`);
                     
-                    resultsBody.innerHTML = '';
+                    // Open the response as a readable stream
+                    const reader = (await response).body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
                     
-                    if (data.status === 'error') {
-                        const errorDiv = document.createElement('div');
-                        errorDiv.className = 'error-message';
-                        errorDiv.textContent = `Error: ${data.error_message || 'Request timed out'}`;
-                        resultsSummary.appendChild(errorDiv);
-                        
-                        if (data.is_partial_result) {
-                            const warningDiv = document.createElement('div');
-                            warningDiv.className = 'warning-message';
-                            warningDiv.textContent = `Showing partial results from cache. Some online players may not be included.`;
-                            resultsSummary.appendChild(warningDiv);
-                        }
-                        
-                        const summaryText = document.createElement('p');
-                        summaryText.textContent = `Found ${data.total_players} players without a guild (Level ${data.min_level}+)`;
-                        resultsSummary.appendChild(summaryText);
-
-                        const statusInfo = document.createElement('div');
-                        statusInfo.className = 'status-info';
-                        statusInfo.innerHTML = `Cache contains data for ${data.cache_size} players. The server is automatically refreshing player data in the background.`;
-                        resultsSummary.appendChild(statusInfo);
-
-                        if (data.total_online_players) {
-                            const onlineInfo = document.createElement('div');
-                            onlineInfo.className = 'status-info';
-                            onlineInfo.innerHTML = `Total online players: ${data.total_online_players}`;
-                            resultsSummary.appendChild(onlineInfo);
-                        }
-                    } else {
-                        const summaryText = document.createElement('p');
-                        summaryText.textContent = `Found ${data.total_players} players without a guild (Level ${data.min_level}+)`;
-                        resultsSummary.appendChild(summaryText);
-
-                        if (data.cache_size) {
-                            const statusInfo = document.createElement('div');
-                            statusInfo.className = 'status-info';
+                    // Function to process stream chunks
+                    const processStream = async () => {
+                        while (true) {
+                            const { value, done } = await reader.read();
                             
-                            let statusText = `Successfully checked ${data.checked_players} online players. Cache contains data for ${data.cache_size} players.`;
-                            
-                            if (data.total_online_players) {
-                                statusText += `<br>Total online players: ${data.total_online_players}`;
-                                
-                                if (data.online_players_processed_percent) {
-                                    statusText += ` (processed ${data.online_players_processed_percent}%)`;
-                                }
+                            if (done) {
+                                console.log('Stream complete');
+                                break;
                             }
                             
-                            statusInfo.innerHTML = statusText;
-                            resultsSummary.appendChild(statusInfo);
+                            // Decode the chunk and add to buffer
+                            buffer += decoder.decode(value, { stream: true });
+                            
+                            // Process complete lines in the buffer
+                            const lines = buffer.split('\n');
+                            buffer = lines.pop(); // Keep the last incomplete line in the buffer
+                            
+                            for (const line of lines) {
+                                if (!line.trim()) continue;
+                                
+                                try {
+                                    const data = JSON.parse(line);
+                                    
+                                    switch (data.type) {
+                                        case 'init':
+                                            console.log('Stream initialized', data);
+                                            break;
+                                            
+                                        case 'status':
+                                            const statusDiv = document.createElement('div');
+                                            statusDiv.className = 'status-info';
+                                            statusDiv.textContent = data.message;
+                                            resultsSummary.appendChild(statusDiv);
+                                            break;
+                                            
+                                        case 'player':
+                                            // Show the table if it's not visible yet
+                                            if (resultsTable.style.display === 'none') {
+                                                resultsTable.style.display = 'table';
+                                            }
+                                            
+                                            // Add the player to the table with a small delay
+                                            await addPlayerWithDelay(data.player);
+                                            
+                                            // Update player count
+                                            playerCount++;
+                                            const foundStatus = document.querySelector('.found-status');
+                                            if (foundStatus) {
+                                                foundStatus.textContent = `Found ${playerCount} players without a guild (Level ${minLevel}+)`;
+                                            }
+                                            
+                                            // Update progress
+                                            if (data.progress) {
+                                                updateProgressDisplay(
+                                                    data.progress.processed,
+                                                    data.progress.total,
+                                                    data.progress.percent || Math.round((data.progress.processed / data.progress.total) * 100)
+                                                );
+                                            }
+                                            break;
+                                            
+                                        case 'progress':
+                                            // Just update the progress display
+                                            if (data.progress) {
+                                                updateProgressDisplay(
+                                                    data.progress.processed,
+                                                    data.progress.total,
+                                                    data.progress.percent
+                                                );
+                                            }
+                                            break;
+                                            
+                                        case 'complete':
+                                            // Final update
+                                            console.log('Processing complete', data);
+                                            
+                                            // Update the found status with final count
+                                            const finalFoundStatus = document.querySelector('.found-status');
+                                            if (finalFoundStatus) {
+                                                finalFoundStatus.textContent = `Found ${data.total_players} players without a guild (Level ${minLevel}+)`;
+                                            }
+                                            
+                                            // Add final stats
+                                            const finalStatsDiv = document.createElement('div');
+                                            finalStatsDiv.className = 'status-info';
+                                            finalStatsDiv.innerHTML = `
+                                                Successfully checked ${data.checked_players} online players. 
+                                                Cache contains data for ${data.cache_size} players.<br>
+                                                Total online players: ${data.total_online_players} 
+                                                (processed ${data.online_players_processed_percent}%)
+                                            `;
+                                            resultsSummary.appendChild(finalStatsDiv);
+                                            
+                                            // Remove progress elements
+                                            const progressInfo = document.querySelector('.progress-info');
+                                            if (progressInfo) progressInfo.remove();
+                                            
+                                            const progressBarContainer = document.querySelector('.progress-bar-container');
+                                            if (progressBarContainer) progressBarContainer.remove();
+                                            break;
+                                            
+                                        case 'error':
+                                            throw new Error(data.error_message);
+                                    }
+                                } catch (e) {
+                                    console.error('Error processing data:', e, line);
+                                    const errorDiv = document.createElement('div');
+                                    errorDiv.className = 'error-message';
+                                    errorDiv.textContent = `Error: ${e.message}`;
+                                    resultsSummary.appendChild(errorDiv);
+                                }
+                            }
                         }
-                    }
-
-                    if (data.players && data.players.length > 0) {
-                        data.players.forEach(player => {
-                            const row = document.createElement('tr');
-                            row.className = 'player-row';
-                            
-                            const nameCell = document.createElement('td');
-                            nameCell.textContent = player.username;
-                            
-                            const levelCell = document.createElement('td');
-                            levelCell.textContent = player.level;
-                            
-                            const actionCell = document.createElement('td');
-                            const copyBtn = document.createElement('button');
-                            copyBtn.className = 'copy-btn';
-                            
-                            const clipboardIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                            clipboardIcon.setAttribute('viewBox', '0 0 24 24');
-                            clipboardIcon.innerHTML = '<path d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>';
-                            
-                            const checkmarkIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                            checkmarkIcon.setAttribute('viewBox', '0 0 24 24');
-                            checkmarkIcon.innerHTML = '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>';
-                            checkmarkIcon.style.display = 'none';
-                            
-                            copyBtn.appendChild(clipboardIcon);
-                            copyBtn.appendChild(checkmarkIcon);
-                            
-                            copyBtn.addEventListener('click', function() {
-                                const message = `/msg ${player.username} ${getRandomMessage()}`;
-                                copyToClipboard(message);
-                                
-                                copyBtn.classList.add('copy-success');
-                                clipboardIcon.style.display = 'none';
-                                checkmarkIcon.style.display = 'block';
-                                
-                                setTimeout(() => {
-                                    copyBtn.classList.remove('copy-success');
-                                    clipboardIcon.style.display = 'block';
-                                    checkmarkIcon.style.display = 'none';
-                                }, 1500);
-                            });
-                            actionCell.appendChild(copyBtn);
-                            
-                            row.appendChild(nameCell);
-                            row.appendChild(levelCell);
-                            row.appendChild(actionCell);
-                            resultsBody.appendChild(row);
-                        });
-                        resultsTable.style.display = 'table';
-                    }
+                        
+                        loadingSpan.style.display = 'none';
+                    };
+                    
+                    // Start processing the stream
+                    processStream().catch(error => {
+                        console.error('Stream processing error:', error);
+                        const errorDiv = document.createElement('div');
+                        errorDiv.className = 'error-message';
+                        errorDiv.textContent = `Error: ${error.message}`;
+                        resultsSummary.appendChild(errorDiv);
+                        loadingSpan.style.display = 'none';
+                    });
+                    
                 } catch (error) {
-                    console.error('Error fetching data:', error);
-                    resultsSummary.innerHTML = '<div class="error-message">Error connecting to the server. Please try again later.</div>';
-                } finally {
+                    console.error('Error setting up stream:', error);
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'error-message';
+                    errorDiv.textContent = `Error connecting to the server: ${error.message}`;
+                    resultsSummary.appendChild(errorDiv);
                     loadingSpan.style.display = 'none';
                 }
             });

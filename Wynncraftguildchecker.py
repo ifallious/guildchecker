@@ -4,7 +4,7 @@ import json
 import os
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context
 import db
 
 # Cache expiration time (in hours)
@@ -138,7 +138,7 @@ def check_player_guilds(max_workers=10, delay=0.2, min_level=0):
                 except Exception as e:
                     print(f"Error processing player: {e}")
                 time.sleep(delay)
-    results["DUDE Hoe <3"] = {
+    results["ifallious <3"] = {
         "guild": None,
         "highest_level": 169
     }
@@ -258,6 +258,156 @@ def refresh_cache_api():
         "message": f"Cache refreshed with {len(results)} players",
         "timestamp": datetime.now().isoformat()
     })
+
+@app.route('/api/no-guild-players-stream', methods=['GET'])
+def no_guild_players_stream_api():
+    """Streaming API endpoint to get players without a guild, filtered by minimum level"""
+    min_level = request.args.get('min_level', default=0, type=int)
+    
+    @stream_with_context
+    def generate():
+        try:
+            # Send initial response header
+            yield json.dumps({
+                "type": "init",
+                "timestamp": datetime.now().isoformat(),
+                "min_level": min_level,
+                "status": "processing"
+            }) + '\n'
+            
+            # Get total number of online players first
+            all_online_players = get_online_players()
+            total_online_players = len(all_online_players)
+            
+            yield json.dumps({
+                "type": "status",
+                "message": f"Found {total_online_players} online players"
+            }) + '\n'
+            
+            # Load cached player data from database
+            cache = db.get_all_players_from_cache()
+            
+            # Periodically clear expired cache entries
+            db.clear_expired_cache()
+            
+            # Identify players that need to be fetched (not in cache or cache expired)
+            need_fetch = [p for p in all_online_players if p not in cache or not db.is_cache_valid(cache[p].get("timestamp"))]
+            cached_players = [p for p in all_online_players if p in cache and db.is_cache_valid(cache[p].get("timestamp"))]
+            
+            yield json.dumps({
+                "type": "status",
+                "message": f"Need to fetch {len(need_fetch)} players, using {len(cached_players)} from cache",
+                "cached_count": len(cached_players),
+                "fetch_count": len(need_fetch)
+            }) + '\n'
+            
+            # First, process all cached players
+            processed_count = 0
+            no_guild_players = []
+            
+            # Process cached players first
+            for username in cached_players:
+                player_data = cache[username]
+                guild = player_data["guild"]
+                highest_level = player_data["highest_level"]
+                
+                processed_count += 1
+                
+                # Only send no-guild players that meet the level requirement
+                if guild is None and highest_level >= min_level:
+                    player_info = {
+                        "username": username,
+                        "level": highest_level
+                    }
+                    no_guild_players.append(player_info)
+                    
+                    yield json.dumps({
+                        "type": "player",
+                        "player": player_info,
+                        "progress": {
+                            "processed": processed_count,
+                            "total": total_online_players
+                        }
+                    }) + '\n'
+            
+            # Then, process players that need to be fetched (up to max_players_to_process)
+            if need_fetch:
+                max_players_to_process = min(125, len(need_fetch))
+                need_fetch = need_fetch[:max_players_to_process]
+                
+                total_to_process = len(need_fetch)
+                
+                # Use thread pool to process players concurrently
+                with ThreadPoolExecutor(max_workers=10) as executor:
+                    # Submit all tasks
+                    future_to_username = {executor.submit(get_player_data_from_api, username, cache): username for username in need_fetch}
+                    
+                    # Process results as they complete
+                    for future in future_to_username:
+                        try:
+                            username, guild, highest_level = future.result()
+                            processed_count += 1
+                            
+                            # Only send no-guild players that meet the level requirement
+                            if guild is None and highest_level >= min_level:
+                                player_info = {
+                                    "username": username,
+                                    "level": highest_level
+                                }
+                                no_guild_players.append(player_info)
+                                
+                                yield json.dumps({
+                                    "type": "player",
+                                    "player": player_info,
+                                    "progress": {
+                                        "processed": processed_count,
+                                        "total": total_online_players,
+                                        "percent": round((processed_count / total_online_players) * 100, 1) if total_online_players > 0 else 0
+                                    }
+                                }) + '\n'
+                            
+                            # Occasionally send progress updates even for players that don't match criteria
+                            elif processed_count % 5 == 0:
+                                yield json.dumps({
+                                    "type": "progress",
+                                    "progress": {
+                                        "processed": processed_count,
+                                        "total": total_online_players,
+                                        "percent": round((processed_count / total_online_players) * 100, 1) if total_online_players > 0 else 0
+                                    }
+                                }) + '\n'
+                                
+                        except Exception as e:
+                            print(f"Error processing player: {e}")
+                        
+                        # Small delay to prevent API rate limiting
+                        time.sleep(0.2)
+            
+            # Sort players by level
+            no_guild_players.sort(key=lambda x: x["level"], reverse=True)
+            
+            # Send final summary
+            cache_size = db.get_cache_size()
+            yield json.dumps({
+                "type": "complete",
+                "total_players": len(no_guild_players),
+                "cache_size": cache_size,
+                "checked_players": processed_count,
+                "total_online_players": total_online_players,
+                "online_players_processed_percent": round(processed_count / total_online_players * 100 if total_online_players > 0 else 0, 1),
+                "timestamp": datetime.now().isoformat(),
+                "min_level": min_level
+            }) + '\n'
+            
+        except Exception as e:
+            # Send error message
+            yield json.dumps({
+                "type": "error",
+                "error_message": str(e),
+                "timestamp": datetime.now().isoformat()
+            }) + '\n'
+    
+    return Response(generate(), mimetype='application/x-ndjson')
 
 @app.route('/')
 def home():
