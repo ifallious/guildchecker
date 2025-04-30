@@ -3,9 +3,11 @@ import time
 import json
 import os
 import threading
+import random
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, jsonify, request, send_from_directory
+from cache_helper import load_cache, save_cache, is_cache_valid
 
 # Cache file path - use /tmp directory for Vercel serverless functions
 # Vercel has a writable /tmp directory that can be used for temporary storage
@@ -25,76 +27,6 @@ CACHE_REFRESH_INTERVAL_MINUTES = 5
 is_refreshing = False
 
 app = Flask(__name__, static_folder='public')
-
-def load_cache():
-    """Load cached player data from file"""
-    if not os.path.exists(CACHE_FILE):
-        return {}
-        
-    try:
-        with open(CACHE_FILE, 'r') as f:
-            cache = json.load(f)
-            print(f"Loaded cache with {len(cache)} players")
-            return cache
-    except Exception as e:
-        print(f"Error loading cache: {e}")
-        return {}
-
-def save_cache(cache):
-    """Save player data to cache file"""
-    try:
-        with open(CACHE_FILE, 'w') as f:
-            json.dump(cache, f, indent=2)
-        print(f"Saved {len(cache)} players to cache")
-    except Exception as e:
-        print(f"Error saving cache: {e}")
-
-def is_cache_valid(timestamp_str):
-    """Check if cached data is still valid"""
-    if not timestamp_str:
-        return False
-        
-    try:
-        # Parse the cached timestamp
-        cached_time = datetime.fromisoformat(timestamp_str)
-        # Calculate expiration time
-        expiration_time = datetime.now() - timedelta(hours=CACHE_EXPIRATION_HOURS)
-        # Return True if cached data is newer than expiration time
-        return cached_time > expiration_time
-    except Exception:
-        return False
-
-def should_refresh_cache():
-    """Check if the cache needs to be refreshed based on last update time"""
-    try:
-        if not os.path.exists(CACHE_FILE):
-            return True
-            
-        with open(CACHE_FILE, 'r') as f:
-            cache = json.load(f)
-            
-        # If cache is empty, it needs to be refreshed
-        if not cache:
-            return True
-            
-        # Find the most recent timestamp in the cache
-        latest_timestamp = None
-        for player_data in cache.values():
-            if "timestamp" in player_data:
-                timestamp = datetime.fromisoformat(player_data["timestamp"])
-                if latest_timestamp is None or timestamp > latest_timestamp:
-                    latest_timestamp = timestamp
-        
-        # If no valid timestamp is found, cache needs refresh
-        if latest_timestamp is None:
-            return True
-            
-        # Check if the cache is older than the refresh interval
-        refresh_time = datetime.now() - timedelta(minutes=CACHE_REFRESH_INTERVAL_MINUTES)
-        return latest_timestamp < refresh_time
-    except Exception as e:
-        print(f"Error checking if cache needs refresh: {e}")
-        return True
 
 def get_online_players():
     """Get all online players from the Wynncraft API"""
@@ -202,6 +134,9 @@ def background_refresh_cache():
                     print(f"Background refresh progress: {processed}/{total_to_process} completed")
                 except Exception as e:
                     print(f"Error in background refresh for a player: {e}")
+        
+        # Save the complete cache one more time after all processing is done
+        save_cache(cache)
     except Exception as e:
         print(f"Error in background refresh: {e}")
     finally:
