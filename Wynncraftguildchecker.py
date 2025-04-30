@@ -287,7 +287,7 @@ def no_guild_players_api():
         total_online_players = len(all_online_players)
         
         # Use fewer workers and longer delay to avoid rate limiting
-        results = check_player_guilds(max_workers=10, delay=0.2)
+        results = check_player_guilds(max_workers=10, delay=0.1)
         
         # Get players without a guild filtered by minimum level
         no_guild_players = get_players_without_guild(results, min_level)
