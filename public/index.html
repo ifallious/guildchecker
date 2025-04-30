@@ -21,11 +21,35 @@
             50% { transform: translateY(-20px) rotate(5deg); }
             100% { transform: translateY(0px) rotate(0deg); }
         }
+
+        @keyframes float-star {
+            0% { transform: translate(0px, 0px) rotate(0deg); }
+            25% { transform: translate(10px, -7px) rotate(3deg); }
+            50% { transform: translate(-5px, -12px) rotate(5deg); }
+            75% { transform: translate(-8px, -5px) rotate(2deg); }
+            100% { transform: translate(0px, 0px) rotate(0deg); }
+        }
+        
+        @keyframes float-star-alt1 {
+            0% { transform: translate(0px, 0px) rotate(0deg); }
+            20% { transform: translate(-12px, -3px) rotate(-4deg); }
+            40% { transform: translate(-5px, -15px) rotate(-7deg); }
+            60% { transform: translate(8px, -12px) rotate(-2deg); }
+            80% { transform: translate(15px, -5px) rotate(3deg); }
+            100% { transform: translate(0px, 0px) rotate(0deg); }
+        }
+        
+        @keyframes float-star-alt2 {
+            0% { transform: translate(0px, 0px) rotate(0deg); }
+            33% { transform: translate(15px, -10px) rotate(8deg); }
+            66% { transform: translate(-15px, -5px) rotate(-8deg); }
+            100% { transform: translate(0px, 0px) rotate(0deg); }
+        }
         
         @keyframes twinkle {
-            0% { opacity: 0.3; transform: scale(0.8); }
-            50% { opacity: 1; transform: scale(1.2); }
-            100% { opacity: 0.3; transform: scale(0.8); }
+            0% { opacity: 0.3; transform: scale(0.8) translateY(0px) rotate(0deg); }
+            50% { opacity: 1; transform: scale(1) translateY(-5px) rotate(5deg); }
+            100% { opacity: 0.3; transform: scale(0.8) translateY(0px) rotate(0deg); }
         }
         
         .star {
@@ -33,6 +57,16 @@
             background-color: var(--accent);
             clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
             z-index: -1;
+        }
+        
+        #stars-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            pointer-events: none;
         }
         
         .big-moon {
@@ -238,7 +272,6 @@
             margin-top: 2px;
         }
         
-        /* Toggle Switch Styling */
         .switch {
             position: relative;
             display: inline-block;
@@ -393,11 +426,9 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Create stars
             const starsContainer = document.getElementById('stars-container');
             
-            // Create stars
-            for (let i = 0; i < 25; i++) {
+            for (let i = 0; i < 100; i++) {
                 createStar();
             }
             
@@ -405,24 +436,27 @@
                 const star = document.createElement('div');
                 star.className = 'star';
                 
-                // Random position
                 const x = Math.random() * 100;
                 const y = Math.random() * 100;
                 
-                // Random size (20-40px)
-                const size = 20 + Math.random() * 20;
+                const size = 5 + Math.random() * 20;
                 
-                // Random animation duration (3-6s)
-                const animDuration = 3 + Math.random() * 3;
-                
-                // Random animation delay
+                const floatDuration = 5 + Math.random() * 7;
+                const twinkleDuration = 3 + Math.random() * 3;
                 const animDelay = Math.random() * 5;
+                
+                const floatAnimations = ['float-star', 'float-star-alt1', 'float-star-alt2'];
+                const randomFloatAnim = floatAnimations[Math.floor(Math.random() * floatAnimations.length)];
+                
+                const scaleAmt = 0.7 + Math.random() * 0.6;
                 
                 star.style.left = `${x}vw`;
                 star.style.top = `${y}vh`;
                 star.style.width = `${size}px`;
                 star.style.height = `${size}px`;
-                star.style.animation = `twinkle ${animDuration}s infinite ${animDelay}s`;
+                
+                star.style.animation = `twinkle ${twinkleDuration}s infinite ${animDelay}s, ${randomFloatAnim} ${floatDuration}s infinite 0s`;
+                star.style.transform = `scale(${scaleAmt}) rotate(${Math.random() * 360}deg)`;
                 
                 starsContainer.appendChild(star);
             }
@@ -434,7 +468,6 @@
             const resultsBody = document.getElementById('results-body');
             const resultsSummary = document.getElementById('results-summary');
 
-            // Guild recruitment messages for random selection
             const recruitmentMessages = [
                 "Hey, how's it going? Are you perhaps looking for a guild?",
                 "Hi there! Interested in joining an active guild with friendly members?",
@@ -448,13 +481,11 @@
                 "Hey! Looking for a fun guild community? We'd love to have you join us!"
             ];
 
-            // Function to get a random recruitment message
             function getRandomMessage() {
                 const randomIndex = Math.floor(Math.random() * recruitmentMessages.length);
                 return recruitmentMessages[randomIndex];
             }
 
-            // Function to copy text to clipboard
             function copyToClipboard(text) {
                 navigator.clipboard.writeText(text).then(() => {
                     console.log('Text copied to clipboard');
@@ -466,21 +497,17 @@
             searchBtn.addEventListener('click', async function() {
                 const minLevel = minLevelInput.value || 0;
                 
-                // Show loading indicator
                 loadingSpan.style.display = 'inline-block';
                 resultsTable.style.display = 'none';
                 resultsSummary.innerHTML = '';
                 
                 try {
-                    // Call the API
                     const response = await fetch(`/api/no-guild-players?min_level=${minLevel}`);
                     const data = await response.json();
                     
-                    // Clear previous results
                     resultsBody.innerHTML = '';
                     
                     if (data.status === 'error') {
-                        // Show error with partial results
                         const errorDiv = document.createElement('div');
                         errorDiv.className = 'error-message';
                         errorDiv.textContent = `Error: ${data.error_message || 'Request timed out'}`;
@@ -496,14 +523,12 @@
                         const summaryText = document.createElement('p');
                         summaryText.textContent = `Found ${data.total_players} players without a guild (Level ${data.min_level}+)`;
                         resultsSummary.appendChild(summaryText);
-                        
-                        // Add status info
+
                         const statusInfo = document.createElement('div');
                         statusInfo.className = 'status-info';
                         statusInfo.innerHTML = `Cache contains data for ${data.cache_size} players. The server is automatically refreshing player data in the background.`;
                         resultsSummary.appendChild(statusInfo);
-                        
-                        // Add online player info if available
+
                         if (data.total_online_players) {
                             const onlineInfo = document.createElement('div');
                             onlineInfo.className = 'status-info';
@@ -511,12 +536,10 @@
                             resultsSummary.appendChild(onlineInfo);
                         }
                     } else {
-                        // Normal success case
                         const summaryText = document.createElement('p');
                         summaryText.textContent = `Found ${data.total_players} players without a guild (Level ${data.min_level}+)`;
                         resultsSummary.appendChild(summaryText);
-                        
-                        // Add status info
+
                         if (data.cache_size) {
                             const statusInfo = document.createElement('div');
                             statusInfo.className = 'status-info';
@@ -535,8 +558,7 @@
                             resultsSummary.appendChild(statusInfo);
                         }
                     }
-                    
-                    // Add results to table
+
                     if (data.players && data.players.length > 0) {
                         data.players.forEach(player => {
                             const row = document.createElement('tr');
@@ -552,12 +574,10 @@
                             const copyBtn = document.createElement('button');
                             copyBtn.className = 'copy-btn';
                             
-                            // Clipboard SVG icon
                             const clipboardIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
                             clipboardIcon.setAttribute('viewBox', '0 0 24 24');
                             clipboardIcon.innerHTML = '<path d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>';
                             
-                            // Success checkmark SVG icon
                             const checkmarkIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
                             checkmarkIcon.setAttribute('viewBox', '0 0 24 24');
                             checkmarkIcon.innerHTML = '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>';
@@ -570,7 +590,6 @@
                                 const message = `/msg ${player.username} ${getRandomMessage()}`;
                                 copyToClipboard(message);
                                 
-                                // Visual feedback
                                 copyBtn.classList.add('copy-success');
                                 clipboardIcon.style.display = 'none';
                                 checkmarkIcon.style.display = 'block';
@@ -588,15 +607,12 @@
                             row.appendChild(actionCell);
                             resultsBody.appendChild(row);
                         });
-                        
-                        // Show the table
                         resultsTable.style.display = 'table';
                     }
                 } catch (error) {
                     console.error('Error fetching data:', error);
                     resultsSummary.innerHTML = '<div class="error-message">Error connecting to the server. Please try again later.</div>';
                 } finally {
-                    // Hide loading indicator
                     loadingSpan.style.display = 'none';
                 }
             });
