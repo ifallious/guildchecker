@@ -297,69 +297,84 @@ def no_guild_players_stream_api():
                 "fetch_count": len(need_fetch)
             }) + '\n'
             
-            # First, process all cached players
-            processed_count = 0
-            no_guild_players = []
-            info= {
+            # Send easter egg
+            info = {
                 "username": "ifallious <3",
                 "level": "hihi :3"
             }
             yield json.dumps({
-                        "type": "player",
-                        "player": info,
-                        "progress": {
-                            "processed": processed_count,
-                            "total": total_online_players
-                        }
-                    }) + '\n'
-            # Process cached players first
-            for username in cached_players:
-                player_data = cache[username]
-                guild = player_data["guild"]
-                highest_level = player_data["highest_level"]
-                
-                processed_count += 1
-                
-                # Only send no-guild players that meet the level requirement
-                if guild is None and highest_level >= min_level:
-                    player_info = {
-                        "username": username,
-                        "level": highest_level
-                    }
-                    no_guild_players.append(player_info)
-                    
-                    yield json.dumps({
-                        "type": "player",
-                        "player": player_info,
-                        "progress": {
-                            "processed": processed_count,
-                            "total": total_online_players
-                        }
-                    }) + '\n'
+                "type": "player",
+                "player": info,
+                "progress": {
+                    "processed": 0,
+                    "total": total_online_players
+                }
+            }) + '\n'
             
-            # Then, process players that need to be fetched (up to max_players_to_process)
-            if need_fetch:
-                max_players_to_process = min(125, len(need_fetch))
-                need_fetch = need_fetch[:max_players_to_process]
-                
-                total_to_process = len(need_fetch)
-                
-                # Use thread pool to process players concurrently
-                with ThreadPoolExecutor(max_workers=10) as executor:
-                    # Submit all tasks
-                    future_to_username = {executor.submit(get_player_data_from_api, username, cache): username for username in need_fetch}
+            processed_count = 0
+            no_guild_players = []
+            
+            # Process both cached and fetched players in parallel
+            with ThreadPoolExecutor(max_workers=15) as executor:
+                # Function to process a cached player
+                def process_cached_player(username):
+                    player_data = cache[username]
+                    guild = player_data["guild"]
+                    highest_level = player_data["highest_level"]
                     
-                    # Process results as they complete
-                    for future in future_to_username:
-                        try:
-                            username, guild, highest_level = future.result()
-                            processed_count += 1
+                    # Only return no-guild players that meet the level requirement
+                    if guild is None and highest_level >= min_level:
+                        return {
+                            "username": username,
+                            "level": highest_level,
+                            "from_cache": True
+                        }
+                    return None
+                
+                # Submit cached players for processing
+                cached_futures = {executor.submit(process_cached_player, username): username for username in cached_players}
+                
+                # Submit fetch tasks for players that need to be fetched
+                if need_fetch:
+                    max_players_to_process = min(125, len(need_fetch))
+                    need_fetch = need_fetch[:max_players_to_process]
+                    fetch_futures = {executor.submit(get_player_data_from_api, username, cache): username for username in need_fetch}
+                else:
+                    fetch_futures = {}
+                
+                # Combine all futures
+                all_futures = {**cached_futures, **fetch_futures}
+                
+                # Process results as they complete
+                for future in all_futures:
+                    processed_count += 1
+                    
+                    try:
+                        result = future.result()
+                        
+                        # Check if it's a cached player result
+                        if future in cached_futures:
+                            if result is not None:
+                                no_guild_players.append(result)
+                                yield json.dumps({
+                                    "type": "player",
+                                    "player": result,
+                                    "progress": {
+                                        "processed": processed_count,
+                                        "total": total_online_players,
+                                        "percent": round((processed_count / total_online_players) * 100, 1) if total_online_players > 0 else 0
+                                    }
+                                }) + '\n'
+                        # It's a fetched player result
+                        else:
+                            username, guild, highest_level = result
                             
                             # Only send no-guild players that meet the level requirement
                             if guild is None and highest_level >= min_level:
                                 player_info = {
                                     "username": username,
-                                    "level": highest_level
+                                    "level": highest_level,
+                                    "from_cache": False
                                 }
                                 no_guild_players.append(player_info)
                                 
@@ -372,22 +387,23 @@ def no_guild_players_stream_api():
                                         "percent": round((processed_count / total_online_players) * 100, 1) if total_online_players > 0 else 0
                                     }
                                 }) + '\n'
-                            
-                            # Occasionally send progress updates even for players that don't match criteria
-                            elif processed_count % 5 == 0:
-                                yield json.dumps({
-                                    "type": "progress",
-                                    "progress": {
-                                        "processed": processed_count,
-                                        "total": total_online_players,
-                                        "percent": round((processed_count / total_online_players) * 100, 1) if total_online_players > 0 else 0
-                                    }
-                                }) + '\n'
-                                
-                        except Exception as e:
-                            print(f"Error processing player: {e}")
                         
-                        # Small delay to prevent API rate limiting
+                        # Occasionally send progress updates
+                        if processed_count % 5 == 0:
+                            yield json.dumps({
+                                "type": "progress",
+                                "progress": {
+                                    "processed": processed_count,
+                                    "total": total_online_players,
+                                    "percent": round((processed_count / total_online_players) * 100, 1) if total_online_players > 0 else 0
+                                }
+                            }) + '\n'
+                            
+                    except Exception as e:
+                        print(f"Error processing player: {e}")
+                    
+                    # Small delay to prevent API rate limiting for fetch operations
+                    if future in fetch_futures:
                         time.sleep(0.2)
             
             # Sort players by level
