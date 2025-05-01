@@ -664,13 +664,12 @@
             }
 
             async function addPlayerWithDelay(player) {
-                // Use a microtask instead of setTimeout for faster updates
                 return new Promise(resolve => {
-                    requestAnimationFrame(() => {
+                    setTimeout(() => {
                         const playerRow = createPlayerRow(player);
                         resultsBody.appendChild(playerRow);
                         resolve();
-                    });
+                    },10);
                 });
             }
 
