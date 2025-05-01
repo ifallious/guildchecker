@@ -323,9 +323,9 @@ def no_guild_players_stream_api():
             no_guild_players = []
             
             # Set up executor for API fetch operations
-            fetch_executor = ThreadPoolExecutor(max_workers=10)
+            fetch_executor = ThreadPoolExecutor(max_workers=20)
             # Set up a separate executor for cache processing
-            cache_executor = ThreadPoolExecutor(max_workers=20)
+            cache_executor = ThreadPoolExecutor(max_workers=30)
             
             try:
                 # Function to process a cached player
