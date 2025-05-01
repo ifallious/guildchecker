@@ -138,7 +138,6 @@ def check_player_guilds(max_workers=10, delay=0.2, min_level=0):
                     print(f"Progress: {processed}/{total_to_process} - {username}: Guild: {guild if guild else 'None'}, Level: {highest_level}")
                 except Exception as e:
                     print(f"Error processing player: {e}")
-                time.sleep(delay)
     return results
 
 def get_players_without_guild(results, min_level=0):
@@ -287,29 +286,37 @@ def no_guild_players_stream_api():
             # Periodically clear expired cache entries
             db.clear_expired_cache()
             
-            # Identify players that need to be fetched (not in cache or cache expired)
-            need_fetch = [p for p in all_online_players if p not in cache or not db.is_cache_valid(cache[p].get("timestamp"))]
-            cached_players = [p for p in all_online_players if p in cache and db.is_cache_valid(cache[p].get("timestamp"))]
+            # Parallelize the filtering of players using a thread pool
+            with ThreadPoolExecutor(max_workers=20) as filter_executor:
+                # Function to check if a player needs to be fetched or can use cache
+                def classify_player(username):
+                    if username not in cache or not db.is_cache_valid(cache[username].get("timestamp")):
+                        return ("fetch", username)
+                    else:
+                        return ("cache", username)
+                
+                # Submit all player classifications to thread pool
+                classification_futures = [filter_executor.submit(classify_player, player) for player in all_online_players]
+                
+                # Collect results
+                need_fetch = []
+                cached_players = []
+                
+                for future in concurrent.futures.as_completed(classification_futures):
+                    try:
+                        player_type, username = future.result()
+                        if player_type == "fetch":
+                            need_fetch.append(username)
+                        else:
+                            cached_players.append(username)
+                    except Exception as e:
+                        print(f"Error classifying player: {e}")
             
             yield json.dumps({
                 "type": "status",
                 "message": f"Need to fetch {len(need_fetch)} players, using {len(cached_players)} from cache",
                 "cached_count": len(cached_players),
                 "fetch_count": len(need_fetch)
-            }) + '\n'
-            
-            # Send easter egg
-            info = {
-                "username": "ifallious <3",
-                "level": "hihi :3"
-            }
-            yield json.dumps({
-                "type": "player",
-                "player": info,
-                "progress": {
-                    "processed": 0,
-                    "total": total_online_players
-                }
             }) + '\n'
             
             processed_count = 0
