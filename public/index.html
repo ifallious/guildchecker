@@ -694,20 +694,12 @@
                     let buffer = '';
                     
                     const processStream = async () => {
-                        // Create a batch processing system for faster updates
-                        let playerBatch = [];
-                        const batchSize = 5; // Process 5 players at once
                         
                         while (true) {
                             const { value, done } = await reader.read();
                             
                             if (done) {
                                 console.log('Stream complete');
-                                // Process any remaining players in the batch
-                                if (playerBatch.length > 0) {
-                                    await Promise.all(playerBatch.map(player => addPlayerWithDelay(player)));
-                                    playerBatch = [];
-                                }
                                 break;
                             }
                             
@@ -738,22 +730,6 @@
                                             if (resultsTable.style.display === 'none') {
                                                 resultsTable.style.display = 'table';
                                             }
-                                            
-                                            // Add to batch instead of processing immediately
-                                            playerBatch.push(data.player);
-                                            
-                                            // Process batch when it reaches the batch size
-                                            if (playerBatch.length >= batchSize) {
-                                                await Promise.all(playerBatch.map(player => addPlayerWithDelay(player)));
-                                                playerCount += playerBatch.length;
-                                                playerBatch = [];
-                                                
-                                                const foundStatus = document.querySelector('.found-status');
-                                                if (foundStatus) {
-                                                    foundStatus.textContent = `Found ${playerCount} potential recruits (Level ${minLevel}+)`;
-                                                }
-                                            }
-                                            
                                             if (data.progress) {
                                                 updateProgressDisplay(
                                                     data.progress.processed,
@@ -761,10 +737,16 @@
                                                     data.progress.percent || Math.round((data.progress.processed / data.progress.total) * 100)
                                                 );
                                             }
+                                            addPlayerWithDelay(data.player);
+                                            playerCount ++;
+                                            const foundStatus = document.querySelector('.found-status');
+                                            if (foundStatus) {
+                                                foundStatus.textContent = `Found ${playerCount} potential recruits (Level ${minLevel}+)`;
+                                            }
+                                            
                                             break;
                                             
                                         case 'progress':
-                                            // Just update the progress display
                                             if (data.progress) {
                                                 updateProgressDisplay(
                                                     data.progress.processed,
@@ -775,22 +757,18 @@
                                             break;
                                             
                                         case 'complete':
-                                            // Final update
                                             console.log('Processing complete', data);
-                                            
-                                            // Update the found status with final count
+
                                             const finalFoundStatus = document.querySelector('.found-status');
                                             if (finalFoundStatus) {
                                                 finalFoundStatus.textContent = `Found ${data.total_players} potential recruits (Level ${minLevel}+)`;
                                             }
-                                            
-                                            // Add final stats
+
                                             const finalStatsDiv = document.createElement('div');
                                             finalStatsDiv.className = 'status-info';
                                             finalStatsDiv.innerHTML = `Scanned ${data.checked_players} online players (${data.online_players_processed_percent}% of all online players)`;
                                             resultsSummary.appendChild(finalStatsDiv);
-                                            
-                                            // Remove progress elements
+
                                             const progressInfo = document.querySelector('.progress-info');
                                             if (progressInfo) progressInfo.remove();
                                             
