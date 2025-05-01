@@ -577,12 +577,10 @@
                 });
             }
 
-            // Create a single player row
             function createPlayerRow(player) {
                 const row = document.createElement('tr');
                 row.className = 'player-row player-row-new';
                 
-                // Remove the animation class after animation completes
                 setTimeout(() => {
                     row.classList.remove('player-row-new');
                 }, 1500);
@@ -632,13 +630,11 @@
                 return row;
             }
 
-            // Update progress display
             function updateProgressDisplay(processed, total, percent) {
                 const progressInfo = document.querySelector('.progress-info') || document.createElement('div');
                 progressInfo.className = 'status-info progress-info';
                 progressInfo.innerHTML = `Scanning: ${processed}/${total} players (${percent}%)`;
                 
-                // Add progress bar if it doesn't exist
                 if (!document.querySelector('.progress-bar-container')) {
                     const progressBarContainer = document.createElement('div');
                     progressBarContainer.className = 'progress-bar-container';
@@ -656,7 +652,6 @@
                     }
                 }
                 
-                // Update progress bar
                 const progressBar = document.querySelector('.progress-bar');
                 progressBar.style.width = `${percent}%`;
                 
@@ -665,22 +660,19 @@
                 }
             }
 
-            // Function to add player with delay for better visual effect
             async function addPlayerWithDelay(player) {
                 return new Promise(resolve => {
                     setTimeout(() => {
                         const playerRow = createPlayerRow(player);
                         resultsBody.appendChild(playerRow);
                         resolve();
-                    }, 50); // Small delay (50ms) between each player addition
+                    }, 20);
                 });
             }
 
-            // Use streaming API to get results
             searchBtn.addEventListener('click', async function() {
                 const minLevel = minLevelInput.value || 0;
                 
-                // Reset UI and show spinner
                 loadingSpan.style.display = 'inline-block';
                 resultsTable.style.display = 'none';
                 resultsSummary.innerHTML = '';
@@ -693,15 +685,11 @@
                 resultsSummary.appendChild(foundStatus);
                 
                 try {
-                    // Create and initialize EventSource
                     const response = fetch(`/api/no-guild-players-stream?min_level=${minLevel}`);
-                    
-                    // Open the response as a readable stream
                     const reader = (await response).body.getReader();
                     const decoder = new TextDecoder();
                     let buffer = '';
                     
-                    // Function to process stream chunks
                     const processStream = async () => {
                         while (true) {
                             const { value, done } = await reader.read();
@@ -711,12 +699,10 @@
                                 break;
                             }
                             
-                            // Decode the chunk and add to buffer
                             buffer += decoder.decode(value, { stream: true });
-                            
-                            // Process complete lines in the buffer
+
                             const lines = buffer.split('\n');
-                            buffer = lines.pop(); // Keep the last incomplete line in the buffer
+                            buffer = lines.pop();
                             
                             for (const line of lines) {
                                 if (!line.trim()) continue;
@@ -737,22 +723,17 @@
                                             break;
                                             
                                         case 'player':
-                                            // Show the table if it's not visible yet
                                             if (resultsTable.style.display === 'none') {
                                                 resultsTable.style.display = 'table';
                                             }
                                             
-                                            // Add the player to the table with a small delay
                                             await addPlayerWithDelay(data.player);
-                                            
-                                            // Update player count
                                             playerCount++;
                                             const foundStatus = document.querySelector('.found-status');
                                             if (foundStatus) {
                                                 foundStatus.textContent = `Found ${playerCount} potential recruits (Level ${minLevel}+)`;
                                             }
                                             
-                                            // Update progress
                                             if (data.progress) {
                                                 updateProgressDisplay(
                                                     data.progress.processed,
