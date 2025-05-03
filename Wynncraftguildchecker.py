@@ -14,6 +14,9 @@ CACHE_EXPIRATION_HOURS = 48
 # Cache refresh interval (in minutes)
 CACHE_REFRESH_INTERVAL_MINUTES = 5
 
+# Base URL for the loot API
+LOOT_API_BASE_URL = "https://nori.fish"
+
 app = Flask(__name__, static_folder='public')
 
 def get_online_players():
@@ -471,6 +474,129 @@ def no_guild_players_stream_api():
 def home():
     """Serve the static HTML file"""
     return send_from_directory(app.static_folder, 'index.html')
+
+def get_loot_data():
+    """Get loot data from the API"""
+    try:
+        # First get the CSRF token
+        r = requests.get(f"{LOOT_API_BASE_URL}/api/tokens")
+        cookies = r.cookies
+        csrf_token = cookies.get('csrf_token')
+        
+        # Then get the loot data
+        r = requests.get(
+            f"{LOOT_API_BASE_URL}/api/lootpool",
+            cookies=cookies,
+            headers={"X-CSRF-Token": csrf_token}
+        )
+        
+        if r.status_code != 200:
+            print(f"Failed to get loot data: {r.status_code}")
+            return None
+            
+        return r.json()
+    except Exception as e:
+        print(f"Error fetching loot data: {e}")
+        return None
+
+@app.route('/api/region-mythic-prices', methods=['GET'])
+def region_mythic_prices_api():
+    """API endpoint to get average mythic prices per region"""
+    try:
+        # Get the loot data
+        loot_data = get_loot_data()
+        if not loot_data or 'Loot' not in loot_data:
+            return jsonify({
+                "status": "error",
+                "error": "Failed to fetch loot data",
+                "timestamp": datetime.now().isoformat()
+            }), 500
+        
+        # Get stored mythic prices
+        mythic_prices = db.get_mythic_items()
+        
+        # Calculate average prices per region
+        region_prices = {}
+        for region_name, region_data in loot_data['Loot'].items():
+            if 'Mythic' in region_data and isinstance(region_data['Mythic'], list):
+                total_price = 0
+                counted_items = 0
+                
+                for mythic_name in region_data['Mythic']:
+                    if mythic_name in mythic_prices:
+                        total_price += mythic_prices[mythic_name]['price']
+                        counted_items += 1
+                
+                if counted_items > 0:
+                    region_prices[region_name] = {
+                        "average_price": total_price // counted_items,
+                        "mythics_counted": counted_items,
+                        "total_mythics": len(region_data['Mythic'])
+                    }
+                else:
+                    region_prices[region_name] = {
+                        "average_price": 0,
+                        "mythics_counted": 0,
+                        "total_mythics": len(region_data['Mythic'])
+                    }
+        
+        return jsonify({
+            "status": "success",
+            "timestamp": datetime.now().isoformat(),
+            "region_prices": region_prices,
+            "total_regions": len(region_prices),
+            "total_mythics_in_db": len(mythic_prices)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+@app.route('/api/mythic-items', methods=['POST'])
+def save_mythic_item_api():
+    """API endpoint to save a mythic item's price"""
+    try:
+        data = request.get_json()
+        if not data or 'mythic_name' not in data or 'price' not in data:
+            return jsonify({
+                "status": "error",
+                "error": "Missing required fields: mythic_name and price",
+                "timestamp": datetime.now().isoformat()
+            }), 400
+        
+        mythic_name = data['mythic_name']
+        price = int(data['price'])
+        
+        if price < 0:
+            return jsonify({
+                "status": "error",
+                "error": "Price cannot be negative",
+                "timestamp": datetime.now().isoformat()
+            }), 400
+        
+        success = db.save_mythic_item(mythic_name, price)
+        if not success:
+            return jsonify({
+                "status": "error",
+                "error": "Failed to save mythic item",
+                "timestamp": datetime.now().isoformat()
+            }), 500
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully saved price for {mythic_name}",
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
 
 if __name__ == "__main__":
     # For local development

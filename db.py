@@ -85,6 +85,15 @@ def create_tables():
                 )
             ''')
             
+            # Mythic items table
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS mythic_items (
+                    mythic_name VARCHAR(255) PRIMARY KEY,
+                    price INTEGER,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
         conn.close()
         return True
     except Exception as e:
@@ -248,6 +257,55 @@ def clear_expired_cache():
     except Exception as e:
         print(f"Error clearing expired cache: {e}")
         return False
+
+def save_mythic_item(mythic_name, price):
+    """Save or update a mythic item's price"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return False
+            
+        with conn.cursor() as cur:
+            cur.execute('''
+                INSERT INTO mythic_items (mythic_name, price, timestamp)
+                VALUES (%s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (mythic_name) 
+                DO UPDATE SET 
+                    price = %s,
+                    timestamp = CURRENT_TIMESTAMP
+            ''', (mythic_name, price, price))
+            
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Error saving mythic item: {e}")
+        return False
+
+def get_mythic_items():
+    """Get all mythic items and their prices"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return {}
+            
+        items = {}
+        with conn.cursor() as cur:
+            cur.execute('''
+                SELECT mythic_name, price, timestamp
+                FROM mythic_items
+            ''')
+            
+            for row in cur.fetchall():
+                items[row['mythic_name']] = {
+                    'price': row['price'],
+                    'timestamp': row['timestamp'].isoformat() if row['timestamp'] else None
+                }
+            
+        conn.close()
+        return items
+    except Exception as e:
+        print(f"Error getting mythic items: {e}")
+        return {}
 
 # Initialize the database tables on module import
 create_tables() 
