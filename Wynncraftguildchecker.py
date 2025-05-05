@@ -517,36 +517,62 @@ def region_mythic_prices_api():
         
         # Calculate average prices per region
         region_prices = {}
+        errors = []  # Track any errors during processing
+        
         for region_name, region_data in loot_data['Loot'].items():
             if 'Mythic' in region_data and isinstance(region_data['Mythic'], list):
                 total_price = 0
                 counted_items = 0
+                mythics_with_prices = []
+                mythics_without_prices = []
                 
                 for mythic_name in region_data['Mythic']:
                     if mythic_name in mythic_prices:
                         total_price += mythic_prices[mythic_name]['price']
                         counted_items += 1
+                        mythics_with_prices.append({
+                            "name": mythic_name,
+                            "price": mythic_prices[mythic_name]['price'],
+                            "last_updated": mythic_prices[mythic_name]['timestamp']
+                        })
+                    else:
+                        mythics_without_prices.append(mythic_name)
+                        errors.append({
+                            "type": "missing_price",
+                            "region": region_name,
+                            "mythic_name": mythic_name,
+                            "message": f"No price data found for mythic item: {mythic_name}"
+                        })
                 
-                if counted_items > 0:
-                    region_prices[region_name] = {
-                        "average_price": total_price // counted_items,
-                        "mythics_counted": counted_items,
-                        "total_mythics": len(region_data['Mythic'])
-                    }
-                else:
-                    region_prices[region_name] = {
-                        "average_price": 0,
-                        "mythics_counted": 0,
-                        "total_mythics": len(region_data['Mythic'])
-                    }
+                region_prices[region_name] = {
+                    "average_price": total_price // counted_items if counted_items > 0 else 0,
+                    "mythics_counted": counted_items,
+                    "total_mythics": len(region_data['Mythic']),
+                    "mythics_with_prices": mythics_with_prices,
+                    "mythics_without_prices": mythics_without_prices,
+                    "coverage_percentage": round((counted_items / len(region_data['Mythic']) * 100), 2) if region_data['Mythic'] else 0
+                }
         
-        return jsonify({
+        response = {
             "status": "success",
             "timestamp": datetime.now().isoformat(),
             "region_prices": region_prices,
             "total_regions": len(region_prices),
-            "total_mythics_in_db": len(mythic_prices)
-        })
+            "total_mythics_in_db": len(mythic_prices),
+            "errors": errors,
+            "error_count": len(errors)
+        }
+        
+        # Add warning if there are regions without any price data
+        regions_without_prices = [region for region, data in region_prices.items() if data["mythics_counted"] == 0]
+        if regions_without_prices:
+            response["warnings"] = [{
+                "type": "no_price_data",
+                "regions": regions_without_prices,
+                "message": f"No price data available for any mythics in {len(regions_without_prices)} regions"
+            }]
+        
+        return jsonify(response)
         
     except Exception as e:
         return jsonify({
