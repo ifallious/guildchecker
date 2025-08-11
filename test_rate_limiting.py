@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime, timedelta
 import requests
 
-from rate_limit_manager import RateLimitManager, RateLimitInfo
+from rate_limit_manager import RateLimitManager, RateLimitInfo, TokenManager
 
 
 class TestRateLimitInfo(unittest.TestCase):
@@ -155,20 +155,165 @@ class TestRateLimitManager(unittest.TestCase):
         rate_limited_response = Mock()
         rate_limited_response.status_code = 429
         rate_limited_response.headers = {'Retry-After': '5'}
-        
+
         # Second response: success
         success_response = Mock()
         success_response.status_code = 200
         success_response.headers = {'RateLimit-Remaining': '100'}
-        
+
         mock_get.side_effect = [rate_limited_response, success_response]
-        
+
         url = "https://api.wynncraft.com/v3/player/test"
         response = self.manager.make_request(url)
-        
+
         self.assertEqual(response.status_code, 200)
         mock_sleep.assert_called_with(5)  # Should sleep for retry_after
         self.assertEqual(mock_get.call_count, 2)  # Should retry once
+
+    @patch('requests.get')
+    def test_make_request_timeout(self, mock_get):
+        """Test request timeout handling"""
+        # Mock timeout exception
+        mock_get.side_effect = requests.Timeout("Request timed out")
+
+        url = "https://api.wynncraft.com/v3/player/test"
+
+        with self.assertRaises(requests.Timeout):
+            self.manager.make_request(url, max_retries=1)
+
+        # Should have tried twice (initial + 1 retry)
+        self.assertEqual(mock_get.call_count, 2)
+
+    def test_get_timeout_settings(self):
+        """Test timeout settings for different endpoints"""
+        # Test Wynncraft API
+        wynncraft_url = "https://api.wynncraft.com/v3/player/test"
+        connect_timeout, request_timeout = self.manager._get_timeout_settings(wynncraft_url)
+        self.assertIsInstance(connect_timeout, float)
+        self.assertIsInstance(request_timeout, float)
+        self.assertGreater(request_timeout, connect_timeout)
+
+        # Test Nori Fish API
+        nori_url = "https://nori.fish/api/test"
+        connect_timeout2, request_timeout2 = self.manager._get_timeout_settings(nori_url)
+        self.assertIsInstance(connect_timeout2, float)
+        self.assertIsInstance(request_timeout2, float)
+
+
+class TestTokenManager(unittest.TestCase):
+    """Test the TokenManager class"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        self.tokens = ['token1', 'token2', 'token3']
+        self.token_manager = TokenManager(self.tokens, cooldown_seconds=60)
+
+    def test_get_current_token(self):
+        """Test getting current token"""
+        current = self.token_manager.get_current_token()
+        self.assertEqual(current, 'token1')  # Should start with first token
+
+    def test_get_available_token(self):
+        """Test getting available token"""
+        available = self.token_manager.get_available_token()
+        self.assertIn(available, self.tokens)
+
+    def test_token_rotation(self):
+        """Test token rotation when current token is exhausted"""
+        # Simulate exhausted token
+        from rate_limit_manager import RateLimitInfo
+        from datetime import datetime, timedelta
+
+        exhausted_info = RateLimitInfo()
+        exhausted_info.remaining = 0
+        exhausted_info.reset_time = datetime.now() + timedelta(seconds=60)
+
+        self.token_manager.update_token_rate_limit('token1', exhausted_info)
+
+        # Should rotate to next available token
+        available = self.token_manager.get_available_token()
+        self.assertNotEqual(available, 'token1')
+        self.assertIn(available, ['token2', 'token3'])
+
+    def test_token_status(self):
+        """Test token status reporting"""
+        status = self.token_manager.get_token_status()
+
+        self.assertIn('tokens', status)
+        self.assertIn('current_token_index', status)
+        self.assertIn('total_tokens', status)
+        self.assertEqual(status['total_tokens'], 3)
+        self.assertTrue(status['rotation_enabled'])
+
+    def test_empty_token_list(self):
+        """Test token manager with no tokens"""
+        empty_manager = TokenManager([])
+        self.assertIsNone(empty_manager.get_current_token())
+        self.assertIsNone(empty_manager.get_available_token())
+
+
+class TestRateLimitManagerWithTokens(unittest.TestCase):
+    """Test RateLimitManager with token authentication"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        # Mock config with tokens
+        from rate_limit_config import RateLimitConfig
+
+        # Create a mock config
+        self.mock_config = RateLimitConfig()
+        self.mock_config.WYNNCRAFT_API_TOKENS = 'token1,token2,token3'
+
+        self.manager = RateLimitManager(config=self.mock_config)
+
+    def tearDown(self):
+        """Clean up after tests"""
+        self.manager.shutdown()
+
+    def test_auth_headers_generation(self):
+        """Test authorization header generation"""
+        wynncraft_url = "https://api.wynncraft.com/v3/player/test"
+        headers = self.manager._get_auth_headers(wynncraft_url)
+
+        if self.manager.token_manager:
+            self.assertIn('Authorization', headers)
+            self.assertTrue(headers['Authorization'].startswith('Bearer '))
+
+        # Non-Wynncraft URL should not get auth headers
+        other_url = "https://example.com/api/test"
+        headers = self.manager._get_auth_headers(other_url)
+        self.assertNotIn('Authorization', headers)
+
+    @patch('requests.get')
+    def test_make_request_with_token(self, mock_get):
+        """Test making request with token authentication"""
+        if not self.manager.token_manager:
+            self.skipTest("No tokens configured")
+
+        # Mock successful response
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.headers = {'RateLimit-Remaining': '100', 'RateLimit-Limit': '120'}
+        mock_get.return_value = mock_response
+
+        url = "https://api.wynncraft.com/v3/player/test"
+        response = self.manager.make_request(url)
+
+        self.assertEqual(response.status_code, 200)
+
+        # Check that Authorization header was included
+        call_args = mock_get.call_args
+        headers = call_args[1].get('headers', {})
+        self.assertIn('Authorization', headers)
+        self.assertTrue(headers['Authorization'].startswith('Bearer '))
+
+    def test_token_status_in_summary(self):
+        """Test that token status is included in status summary"""
+        if not self.manager.token_manager:
+            self.skipTest("No tokens configured")
+
+        summary = self.manager.get_status_summary()
+        self.assertIn('token_status', summary)
     
     def test_get_status_summary(self):
         """Test status summary generation"""

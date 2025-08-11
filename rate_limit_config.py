@@ -15,22 +15,35 @@ class RateLimitConfig:
     MAX_QUEUE_SIZE = int(os.getenv('RATE_LIMIT_MAX_QUEUE_SIZE', '1000'))
     QUEUE_WORKERS = int(os.getenv('RATE_LIMIT_QUEUE_WORKERS', '5'))
     MAX_RETRIES = int(os.getenv('RATE_LIMIT_MAX_RETRIES', '3'))
+
+    # Timeout settings (in seconds)
+    REQUEST_TIMEOUT = float(os.getenv('RATE_LIMIT_REQUEST_TIMEOUT', '270'))  # 4.5 minutes
+    CONNECT_TIMEOUT = float(os.getenv('RATE_LIMIT_CONNECT_TIMEOUT', '10'))   # 10 seconds for connection
     
     # Logging settings
     LOG_LEVEL = os.getenv('RATE_LIMIT_LOG_LEVEL', 'INFO')
     ENABLE_DEBUG_LOGGING = os.getenv('RATE_LIMIT_DEBUG', 'false').lower() == 'true'
+
+    # API Token settings
+    WYNNCRAFT_API_TOKENS = os.getenv('WYNNCRAFT_API_TOKENS', '').strip()
+    TOKEN_ROTATION_ENABLED = os.getenv('TOKEN_ROTATION_ENABLED', 'true').lower() == 'true'
+    TOKEN_ROTATION_COOLDOWN = int(os.getenv('TOKEN_ROTATION_COOLDOWN', '60'))  # seconds to wait before retrying exhausted token
     
     # API-specific settings
     WYNNCRAFT_API_SETTINGS = {
         'default_delay': float(os.getenv('WYNNCRAFT_DEFAULT_DELAY', '0.2')),
         'throttle_threshold': int(os.getenv('WYNNCRAFT_THROTTLE_THRESHOLD', '10')),
         'max_retries': int(os.getenv('WYNNCRAFT_MAX_RETRIES', '3')),
+        'request_timeout': float(os.getenv('WYNNCRAFT_REQUEST_TIMEOUT', '270')),  # 4.5 minutes
+        'connect_timeout': float(os.getenv('WYNNCRAFT_CONNECT_TIMEOUT', '10')),
     }
-    
+
     NORI_FISH_API_SETTINGS = {
         'default_delay': float(os.getenv('NORI_FISH_DEFAULT_DELAY', '0.5')),
         'throttle_threshold': int(os.getenv('NORI_FISH_THROTTLE_THRESHOLD', '5')),
         'max_retries': int(os.getenv('NORI_FISH_MAX_RETRIES', '2')),
+        'request_timeout': float(os.getenv('NORI_FISH_REQUEST_TIMEOUT', '30')),   # 30 seconds
+        'connect_timeout': float(os.getenv('NORI_FISH_CONNECT_TIMEOUT', '10')),
     }
     
     @classmethod
@@ -46,6 +59,8 @@ class RateLimitConfig:
             'default_delay': cls.DEFAULT_DELAY,
             'throttle_threshold': cls.THROTTLE_THRESHOLD,
             'max_retries': cls.MAX_RETRIES,
+            'request_timeout': cls.REQUEST_TIMEOUT,
+            'connect_timeout': cls.CONNECT_TIMEOUT,
         })
     
     @classmethod
@@ -57,11 +72,33 @@ class RateLimitConfig:
             'max_queue_size': cls.MAX_QUEUE_SIZE,
             'queue_workers': cls.QUEUE_WORKERS,
             'max_retries': cls.MAX_RETRIES,
+            'request_timeout': cls.REQUEST_TIMEOUT,
+            'connect_timeout': cls.CONNECT_TIMEOUT,
             'log_level': cls.LOG_LEVEL,
             'enable_debug_logging': cls.ENABLE_DEBUG_LOGGING,
             'wynncraft_api_settings': cls.WYNNCRAFT_API_SETTINGS,
             'nori_fish_api_settings': cls.NORI_FISH_API_SETTINGS,
+            'wynncraft_api_tokens': cls.get_wynncraft_tokens(),
+            'token_rotation_enabled': cls.TOKEN_ROTATION_ENABLED,
+            'token_rotation_cooldown': cls.TOKEN_ROTATION_COOLDOWN,
         }
+
+    @classmethod
+    def get_wynncraft_tokens(cls) -> list:
+        """Parse and return list of Wynncraft API tokens"""
+        if not cls.WYNNCRAFT_API_TOKENS:
+            return []
+
+        # Split by comma and clean up tokens
+        tokens = [token.strip() for token in cls.WYNNCRAFT_API_TOKENS.split(',')]
+        # Filter out empty tokens
+        tokens = [token for token in tokens if token]
+        return tokens
+
+    @classmethod
+    def has_tokens(cls) -> bool:
+        """Check if any API tokens are configured"""
+        return len(cls.get_wynncraft_tokens()) > 0
 
 
 # Environment-based configuration loading

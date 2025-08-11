@@ -3,11 +3,13 @@ import time
 import json
 import os
 from datetime import datetime, timedelta
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context
 import db
 import concurrent.futures
 from rate_limit_manager import rate_limit_manager
+import signal
+from functools import wraps
 
 # Cache expiration time (in hours)
 CACHE_EXPIRATION_HOURS = 48
@@ -20,69 +22,108 @@ LOOT_API_BASE_URL = "https://nori.fish"
 
 app = Flask(__name__, static_folder='public')
 
+
+class TimeoutError(Exception):
+    """Custom timeout exception"""
+    pass
+
+
+def timeout_handler(func):
+    """
+    Decorator to add timeout handling to API functions.
+    Prevents Vercel serverless function timeouts by failing gracefully.
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except requests.Timeout as e:
+            print(f"Request timeout in {func.__name__}: {e}")
+            # Return appropriate default values based on function
+            if func.__name__ == 'get_online_players':
+                return []
+            elif func.__name__ == 'get_player_data_from_api':
+                # Return username, None guild, 0 level
+                return args[0] if args else 'unknown', None, 0
+            elif func.__name__ == 'get_loot_data':
+                return None
+            else:
+                return None
+        except Exception as e:
+            print(f"Error in {func.__name__}: {e}")
+            # Return appropriate default values based on function
+            if func.__name__ == 'get_online_players':
+                return []
+            elif func.__name__ == 'get_player_data_from_api':
+                return args[0] if args else 'unknown', None, 0
+            elif func.__name__ == 'get_loot_data':
+                return None
+            else:
+                return None
+    return wrapper
+
+@timeout_handler
 def get_online_players():
-    """Get all online players from the Wynncraft API"""
+    """Get all online players from the Wynncraft API with timeout handling"""
     url = "https://api.wynncraft.com/v3/player?identifier=username&server="
 
-    try:
-        response = rate_limit_manager.make_request(url)
+    print(f"Fetching online players from {url}")
+    response = rate_limit_manager.make_request(url)
 
-        if response.status_code != 200:
-            print(f"Failed to get online players: {response.status_code}")
-            return []
-
-        data = response.json()
-        return list(data["players"].keys())
-    except Exception as e:
-        print(f"Error fetching online players: {e}")
+    if response.status_code != 200:
+        print(f"Failed to get online players: {response.status_code}")
         return []
 
+    data = response.json()
+    player_list = list(data["players"].keys())
+    print(f"Successfully fetched {len(player_list)} online players")
+    return player_list
+
+@timeout_handler
 def get_player_data_from_api(username, cache):
-    """Get player data from the API and update cache"""
+    """Get player data from the API and update cache with timeout handling"""
     url = f"https://api.wynncraft.com/v3/player/{username}?fullResult"
 
-    try:
-        # Use the rate limit manager for intelligent request handling
-        response = rate_limit_manager.make_request(url)
+    print(f"Fetching data for player {username}")
+    # Use the rate limit manager for intelligent request handling with timeout
+    response = rate_limit_manager.make_request(url)
 
-        if response.status_code != 200:
-            print(f"Failed to get data for {username}: {response.status_code}")
-            return username, None, 0
-
-        data = response.json()
-        # Check if data is valid and has the expected structure
-        if not data:
-            print(f"Warning: Empty data for {username}")
-            return username, None, 0
-
-        # Get guild information
-        guild = None
-        if 'guild' in data and data['guild'] and isinstance(data['guild'], dict):
-            guild = data['guild'].get('name')
-            print(f"Found guild for {username}: {guild}")
-
-        # Get highest character level
-        highest_level = 0
-        if 'characters' in data and data['characters']:
-            for char_id, char_data in data['characters'].items():
-                if 'level' in char_data:
-                    highest_level = max(highest_level, char_data.get('level', 0))
-
-        # Save the player data directly to the database
-        db.save_player_to_cache(username, guild, highest_level)
-
-        # Also update the in-memory cache for this request
-        if username in cache:
-            cache[username] = {
-                "guild": guild,
-                "highest_level": highest_level,
-                "timestamp": datetime.now().isoformat()
-            }
-
-        return username, guild, highest_level
-    except Exception as e:
-        print(f"Error fetching data for {username}: {e}")
+    if response.status_code != 200:
+        print(f"Failed to get data for {username}: {response.status_code}")
         return username, None, 0
+
+    data = response.json()
+    # Check if data is valid and has the expected structure
+    if not data:
+        print(f"Warning: Empty data for {username}")
+        return username, None, 0
+
+    # Get guild information
+    guild = None
+    if 'guild' in data and data['guild'] and isinstance(data['guild'], dict):
+        guild = data['guild'].get('name')
+        print(f"Found guild for {username}: {guild}")
+
+    # Get highest character level
+    highest_level = 0
+    if 'characters' in data and data['characters']:
+        for char_id, char_data in data['characters'].items():
+            if 'level' in char_data:
+                highest_level = max(highest_level, char_data.get('level', 0))
+
+    # Save the player data directly to the database
+    db.save_player_to_cache(username, guild, highest_level)
+
+    # Also update the in-memory cache for this request
+    if username in cache:
+        cache[username] = {
+            "guild": guild,
+            "highest_level": highest_level,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    print(f"Successfully processed {username}: Guild={guild}, Level={highest_level}")
+    return username, guild, highest_level
 
 def check_player_guilds(max_workers=10, delay=0.2, min_level=0):
     """Check guilds for all online players"""
@@ -490,29 +531,28 @@ def home():
     """Serve the static HTML file"""
     return send_from_directory(app.static_folder, 'index.html')
 
+@timeout_handler
 def get_loot_data():
-    """Get loot data from the API"""
-    try:
-        # First get the CSRF token using rate limit manager
-        r = rate_limit_manager.make_request(f"{LOOT_API_BASE_URL}/api/tokens")
-        cookies = r.cookies
-        csrf_token = cookies.get('csrf_token')
+    """Get loot data from the API with timeout handling"""
+    print("Fetching loot data from API")
+    # First get the CSRF token using rate limit manager
+    r = rate_limit_manager.make_request(f"{LOOT_API_BASE_URL}/api/tokens")
+    cookies = r.cookies
+    csrf_token = cookies.get('csrf_token')
 
-        # Then get the loot data using rate limit manager
-        r = rate_limit_manager.make_request(
-            f"{LOOT_API_BASE_URL}/api/lootpool",
-            cookies=cookies,
-            headers={"X-CSRF-Token": csrf_token}
-        )
+    # Then get the loot data using rate limit manager
+    r = rate_limit_manager.make_request(
+        f"{LOOT_API_BASE_URL}/api/lootpool",
+        cookies=cookies,
+        headers={"X-CSRF-Token": csrf_token}
+    )
 
-        if r.status_code != 200:
-            print(f"Failed to get loot data: {r.status_code}")
-            return None
-
-        return r.json()
-    except Exception as e:
-        print(f"Error fetching loot data: {e}")
+    if r.status_code != 200:
+        print(f"Failed to get loot data: {r.status_code}")
         return None
+
+    print("Successfully fetched loot data")
+    return r.json()
 
 @app.route('/api/rate-limit-status', methods=['GET'])
 def rate_limit_status_api():
@@ -521,11 +561,23 @@ def rate_limit_status_api():
         status_summary = rate_limit_manager.get_status_summary()
         queue_status = rate_limit_manager.get_queue_status()
 
+        # Add timeout configuration info
+        timeout_config = {
+            "wynncraft_player_api": rate_limit_manager._get_timeout_settings("https://api.wynncraft.com/v3/player/test"),
+            "wynncraft_api_v3": rate_limit_manager._get_timeout_settings("https://api.wynncraft.com/v3/guild/test"),
+            "nori_fish_api": rate_limit_manager._get_timeout_settings("https://nori.fish/api/test"),
+            "default": (rate_limit_manager.connect_timeout, rate_limit_manager.request_timeout)
+        }
+
         return jsonify({
             "status": "success",
             "timestamp": datetime.now().isoformat(),
             "rate_limits": status_summary,
-            "queue_status": queue_status
+            "queue_status": queue_status,
+            "timeout_config": {
+                api: {"connect_timeout": connect, "request_timeout": request}
+                for api, (connect, request) in timeout_config.items()
+            }
         })
     except Exception as e:
         return jsonify({

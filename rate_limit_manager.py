@@ -21,6 +21,7 @@ class RateLimitInfo:
     expires: Optional[datetime] = None  # Expiration time from Expires header
     last_request_time: Optional[datetime] = None  # When last request was made
     api_version: Optional[str] = None  # API version from Version header
+    token: Optional[str] = None  # API token used for this rate limit info
     
     def is_rate_limited(self) -> bool:
         """Check if we're currently rate limited"""
@@ -41,6 +42,141 @@ class RateLimitInfo:
         if self.remaining is not None and self.remaining <= threshold:
             return True
         return False
+
+
+class TokenManager:
+    """Manages API token rotation and rate limiting per token"""
+
+    def __init__(self, tokens: list, cooldown_seconds: int = 60):
+        """
+        Initialize token manager.
+
+        Args:
+            tokens: List of API tokens
+            cooldown_seconds: Seconds to wait before retrying exhausted token
+        """
+        self.tokens = tokens
+        self.cooldown_seconds = cooldown_seconds
+        self.current_token_index = 0
+        self.token_rate_limits: Dict[str, RateLimitInfo] = {}
+        self._lock = threading.RLock()
+
+        # Initialize rate limit info for each token
+        for token in tokens:
+            self.token_rate_limits[token] = RateLimitInfo(token=token)
+
+    def get_current_token(self) -> Optional[str]:
+        """Get the currently active token"""
+        if not self.tokens:
+            return None
+
+        with self._lock:
+            return self.tokens[self.current_token_index] if self.current_token_index < len(self.tokens) else None
+
+    def get_available_token(self) -> Optional[str]:
+        """
+        Get an available token that's not rate limited.
+        Rotates to next token if current one is exhausted.
+        """
+        if not self.tokens:
+            return None
+
+        with self._lock:
+            # Check if current token is available
+            current_token = self.get_current_token()
+            if current_token and self._is_token_available(current_token):
+                return current_token
+
+            # Try to find an available token
+            for i in range(len(self.tokens)):
+                token = self.tokens[i]
+                if self._is_token_available(token):
+                    self.current_token_index = i
+                    return token
+
+            # No tokens available, return current token anyway (will handle rate limiting)
+            return current_token
+
+    def _is_token_available(self, token: str) -> bool:
+        """Check if a token is available (not rate limited)"""
+        if token not in self.token_rate_limits:
+            return True
+
+        rate_limit_info = self.token_rate_limits[token]
+
+        # If we don't have rate limit info yet, assume it's available
+        if rate_limit_info.remaining is None:
+            return True
+
+        # Check if token is rate limited
+        if rate_limit_info.is_rate_limited():
+            return False
+
+        # Check if token should be throttled
+        if rate_limit_info.should_throttle(threshold=5):  # Conservative threshold for token rotation
+            return False
+
+        return True
+
+    def update_token_rate_limit(self, token: str, rate_limit_info: RateLimitInfo) -> None:
+        """Update rate limit information for a specific token"""
+        if not token or token not in self.tokens:
+            return
+
+        with self._lock:
+            # Update the token's rate limit info
+            rate_limit_info.token = token
+            self.token_rate_limits[token] = rate_limit_info
+
+            # If current token is exhausted, try to rotate
+            if token == self.get_current_token() and not self._is_token_available(token):
+                self._rotate_to_next_available_token()
+
+    def _rotate_to_next_available_token(self) -> None:
+        """Rotate to the next available token"""
+        if len(self.tokens) <= 1:
+            return
+
+        original_index = self.current_token_index
+
+        # Try each token in sequence
+        for i in range(1, len(self.tokens)):
+            next_index = (self.current_token_index + i) % len(self.tokens)
+            next_token = self.tokens[next_index]
+
+            if self._is_token_available(next_token):
+                self.current_token_index = next_index
+                return
+
+        # No available tokens found, keep current token
+        # (rate limiting will handle the exhausted token)
+
+    def get_token_status(self) -> Dict[str, Any]:
+        """Get status of all tokens"""
+        with self._lock:
+            status = {}
+            for token in self.tokens:
+                # Mask token for security (show only first 8 and last 4 characters)
+                masked_token = f"{token[:8]}...{token[-4:]}" if len(token) > 12 else "***"
+
+                rate_limit_info = self.token_rate_limits.get(token, RateLimitInfo())
+                status[masked_token] = {
+                    'is_current': token == self.get_current_token(),
+                    'is_available': self._is_token_available(token),
+                    'limit': rate_limit_info.limit,
+                    'remaining': rate_limit_info.remaining,
+                    'reset_time': rate_limit_info.reset_time.isoformat() if rate_limit_info.reset_time else None,
+                    'seconds_until_reset': rate_limit_info.seconds_until_reset(),
+                    'is_rate_limited': rate_limit_info.is_rate_limited(),
+                    'last_request_time': rate_limit_info.last_request_time.isoformat() if rate_limit_info.last_request_time else None
+                }
+
+            return {
+                'tokens': status,
+                'current_token_index': self.current_token_index,
+                'total_tokens': len(self.tokens),
+                'rotation_enabled': len(self.tokens) > 1
+            }
 
 
 @dataclass
@@ -85,7 +221,13 @@ class RateLimitManager:
         self.default_delay = default_delay if default_delay is not None else config.DEFAULT_DELAY
         self.throttle_threshold = throttle_threshold if throttle_threshold is not None else config.THROTTLE_THRESHOLD
         self.max_queue_size = max_queue_size if max_queue_size is not None else config.MAX_QUEUE_SIZE
+        self.request_timeout = config.REQUEST_TIMEOUT
+        self.connect_timeout = config.CONNECT_TIMEOUT
         queue_workers = queue_workers if queue_workers is not None else config.QUEUE_WORKERS
+
+        # Initialize token manager for Wynncraft API
+        wynncraft_tokens = config.get_wynncraft_tokens()
+        self.token_manager = TokenManager(wynncraft_tokens, config.TOKEN_ROTATION_COOLDOWN) if wynncraft_tokens else None
         self._rate_limits: Dict[str, RateLimitInfo] = {}
         self._lock = threading.RLock()  # Thread-safe access to rate limit data
         self._request_queue = queue.PriorityQueue(maxsize=max_queue_size)
@@ -130,6 +272,46 @@ class RateLimitManager:
                 return f"{parsed.netloc}_api"
             except:
                 return 'unknown_api'
+
+    def _get_timeout_settings(self, url: str) -> Tuple[float, float]:
+        """
+        Get timeout settings for a specific endpoint.
+
+        Args:
+            url: The URL to get timeout settings for
+
+        Returns:
+            Tuple of (connect_timeout, request_timeout)
+        """
+        endpoint_key = self._get_endpoint_key(url)
+        api_settings = self.config.get_api_settings(endpoint_key)
+
+        connect_timeout = api_settings.get('connect_timeout', self.connect_timeout)
+        request_timeout = api_settings.get('request_timeout', self.request_timeout)
+
+        return connect_timeout, request_timeout
+
+    def _get_auth_headers(self, url: str) -> Dict[str, str]:
+        """
+        Get authorization headers for a request.
+
+        Args:
+            url: The URL being requested
+
+        Returns:
+            Dictionary of headers to include in the request
+        """
+        headers = {}
+        endpoint_key = self._get_endpoint_key(url)
+
+        # Only add auth headers for Wynncraft API endpoints
+        if endpoint_key in ['wynncraft_player_api', 'wynncraft_api_v3'] and self.token_manager:
+            token = self.token_manager.get_available_token()
+            if token:
+                headers['Authorization'] = f'Bearer {token}'
+                self._logger.debug(f"Using token {token[:8]}... for {endpoint_key}")
+
+        return headers
     
     def parse_headers(self, response: requests.Response) -> RateLimitInfo:
         """
@@ -260,16 +442,18 @@ class RateLimitManager:
             'queue_empty': self._request_queue.empty()
         }
 
-    def update_rate_limit_info(self, url: str, response: requests.Response) -> None:
+    def update_rate_limit_info(self, url: str, response: requests.Response, token: Optional[str] = None) -> None:
         """
         Update rate limit information for an endpoint based on response headers.
 
         Args:
             url: The URL that was requested
             response: HTTP response object
+            token: The API token used for this request (if any)
         """
         endpoint_key = self._get_endpoint_key(url)
         new_info = self.parse_headers(response)
+        new_info.token = token
 
         with self._lock:
             if endpoint_key in self._rate_limits:
@@ -287,10 +471,17 @@ class RateLimitManager:
                     existing.expires = new_info.expires
                 if new_info.api_version is not None:
                     existing.api_version = new_info.api_version
+                if new_info.token is not None:
+                    existing.token = new_info.token
                 existing.last_request_time = new_info.last_request_time
             else:
                 # Store new rate limit info
                 self._rate_limits[endpoint_key] = new_info
+
+        # Update token manager if we have one and this is a Wynncraft API
+        if (self.token_manager and token and
+            endpoint_key in ['wynncraft_player_api', 'wynncraft_api_v3']):
+            self.token_manager.update_token_rate_limit(token, new_info)
 
         # Log rate limit status
         self._log_rate_limit_status(endpoint_key, new_info)
@@ -413,6 +604,23 @@ class RateLimitManager:
         """
         last_exception = None
 
+        # Get timeout settings for this endpoint
+        connect_timeout, request_timeout = self._get_timeout_settings(url)
+        timeout = (connect_timeout, request_timeout)
+
+        # Get authorization headers
+        auth_headers = self._get_auth_headers(url)
+        current_token = None
+        if 'Authorization' in auth_headers:
+            # Extract token from Bearer header for tracking
+            current_token = auth_headers['Authorization'].replace('Bearer ', '')
+
+        # Merge auth headers with any provided headers
+        if 'headers' in kwargs:
+            kwargs['headers'].update(auth_headers)
+        else:
+            kwargs['headers'] = auth_headers
+
         for attempt in range(max_retries + 1):
             try:
                 # Calculate and apply delay
@@ -421,11 +629,15 @@ class RateLimitManager:
                     self._logger.info(f"Applying delay of {delay:.2f}s before request to {url}")
                     time.sleep(delay)
 
-                # Make the request
-                response = requests.get(url, **kwargs)
+                # Make the request with timeout
+                self._logger.debug(f"Making request to {url} with timeout {timeout}")
+                if current_token:
+                    self._logger.debug(f"Using token {current_token[:8]}... for request")
+
+                response = requests.get(url, timeout=timeout, **kwargs)
 
                 # Update rate limit information from response headers
-                self.update_rate_limit_info(url, response)
+                self.update_rate_limit_info(url, response, current_token)
 
                 # Handle rate limiting with automatic retry
                 if response.status_code == 429:
@@ -433,15 +645,38 @@ class RateLimitManager:
                     self._logger.warning(
                         f"Rate limited (429) for {url}. Retrying after {retry_after}s"
                     )
+
+                    # If we have token rotation, try to get a different token
+                    if self.token_manager and current_token:
+                        new_token = self.token_manager.get_available_token()
+                        if new_token and new_token != current_token:
+                            self._logger.info(f"Rotating from token {current_token[:8]}... to {new_token[:8]}...")
+                            kwargs['headers']['Authorization'] = f'Bearer {new_token}'
+                            current_token = new_token
+
                     time.sleep(retry_after)
 
                     # Update our rate limit info and try again
-                    self.update_rate_limit_info(url, response)
-                    response = requests.get(url, **kwargs)
-                    self.update_rate_limit_info(url, response)
+                    self.update_rate_limit_info(url, response, current_token)
+                    response = requests.get(url, timeout=timeout, **kwargs)
+                    self.update_rate_limit_info(url, response, current_token)
 
                 return response
 
+            except requests.Timeout as e:
+                last_exception = e
+                self._logger.error(
+                    f"Request to {url} timed out after {request_timeout}s "
+                    f"(attempt {attempt + 1}/{max_retries + 1}): {e}"
+                )
+                if attempt < max_retries:
+                    # For timeouts, use a shorter backoff delay
+                    backoff_delay = min(5.0, (2 ** attempt))  # Cap at 5 seconds for timeouts
+                    self._logger.warning(f"Retrying in {backoff_delay:.1f}s")
+                    time.sleep(backoff_delay)
+                else:
+                    self._logger.error(f"Request timed out after {max_retries + 1} attempts")
+                    raise e
             except requests.RequestException as e:
                 last_exception = e
                 if attempt < max_retries:
@@ -473,6 +708,11 @@ class RateLimitManager:
 
         with self._lock:
             for endpoint_key, info in self._rate_limits.items():
+                # Mask token for security if present
+                masked_token = None
+                if info.token:
+                    masked_token = f"{info.token[:8]}...{info.token[-4:]}" if len(info.token) > 12 else "***"
+
                 summary[endpoint_key] = {
                     'limit': info.limit,
                     'remaining': info.remaining,
@@ -484,8 +724,13 @@ class RateLimitManager:
                     'expires': info.expires.isoformat() if info.expires else None,
                     'api_version': info.api_version,
                     'last_request_time': info.last_request_time.isoformat() if info.last_request_time else None,
-                    'cache_valid': self.is_cache_valid(endpoint_key)
+                    'cache_valid': self.is_cache_valid(endpoint_key),
+                    'current_token': masked_token
                 }
+
+        # Add token manager status if available
+        if self.token_manager:
+            summary['token_status'] = self.token_manager.get_token_status()
 
         return summary
 

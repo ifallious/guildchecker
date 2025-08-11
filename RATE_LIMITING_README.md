@@ -11,6 +11,7 @@ The rate limiting system provides intelligent HTTP request management with the f
 - **Request Queue System**: Queues requests when approaching limits
 - **Automatic Retry Logic**: Handles rate limits and failures with exponential backoff
 - **Cache Optimization**: Uses cache headers to avoid unnecessary requests
+- **Timeout Handling**: Prevents serverless function timeouts with configurable request timeouts
 - **Comprehensive Logging**: Detailed monitoring and debugging information
 
 ## Supported Headers
@@ -70,11 +71,19 @@ export RATE_LIMIT_MAX_QUEUE_SIZE=1000
 export RATE_LIMIT_QUEUE_WORKERS=5
 export RATE_LIMIT_MAX_RETRIES=3
 
+# Timeout settings (in seconds)
+export RATE_LIMIT_REQUEST_TIMEOUT=270    # 4.5 minutes - prevents Vercel timeouts
+export RATE_LIMIT_CONNECT_TIMEOUT=10     # 10 seconds for connection
+
 # API-specific settings
 export WYNNCRAFT_DEFAULT_DELAY=0.2
 export WYNNCRAFT_THROTTLE_THRESHOLD=10
+export WYNNCRAFT_REQUEST_TIMEOUT=270     # 4.5 minutes for Wynncraft API
+export WYNNCRAFT_CONNECT_TIMEOUT=10
 export NORI_FISH_DEFAULT_DELAY=0.5
 export NORI_FISH_THROTTLE_THRESHOLD=5
+export NORI_FISH_REQUEST_TIMEOUT=30      # 30 seconds for Nori Fish API
+export NORI_FISH_CONNECT_TIMEOUT=10
 
 # Logging
 export RATE_LIMIT_LOG_LEVEL=INFO
@@ -112,6 +121,16 @@ Response:
     "max_queue_size": 1000,
     "queue_full": false,
     "queue_empty": false
+  },
+  "timeout_config": {
+    "wynncraft_player_api": {
+      "connect_timeout": 10.0,
+      "request_timeout": 270.0
+    },
+    "nori_fish_api": {
+      "connect_timeout": 10.0,
+      "request_timeout": 30.0
+    }
   }
 }
 ```
@@ -133,6 +152,16 @@ The system proactively monitors rate limits:
 - **Rate Limits (429)**: Waits for `RateLimit-Reset` seconds before retrying
 - **Other Errors**: Exponential backoff (1s, 2.1s, 4.2s, etc.)
 - **Maximum Retries**: Configurable (default: 3 attempts)
+
+### Timeout Handling
+
+The system includes comprehensive timeout handling to prevent serverless function timeouts:
+
+- **Request Timeout**: Default 4.5 minutes (270 seconds) for Wynncraft API to stay within Vercel limits
+- **Connect Timeout**: 10 seconds for establishing connections
+- **API-Specific Timeouts**: Different timeout values for different APIs (e.g., 30 seconds for Nori Fish API)
+- **Graceful Degradation**: When timeouts occur, functions return appropriate default values instead of crashing
+- **Timeout Retry Logic**: Shorter backoff delays for timeout errors compared to other failures
 
 ### Cache Optimization
 
