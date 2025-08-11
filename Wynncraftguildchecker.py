@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context
 import db
 import concurrent.futures
+from rate_limit_manager import rate_limit_manager
 
 # Cache expiration time (in hours)
 CACHE_EXPIRATION_HOURS = 48
@@ -22,29 +23,27 @@ app = Flask(__name__, static_folder='public')
 def get_online_players():
     """Get all online players from the Wynncraft API"""
     url = "https://api.wynncraft.com/v3/player?identifier=username&server="
-    response = requests.get(url)
 
-    if response.status_code != 200:
-        print(f"Failed to get online players: {response.status_code}")
+    try:
+        response = rate_limit_manager.make_request(url)
+
+        if response.status_code != 200:
+            print(f"Failed to get online players: {response.status_code}")
+            return []
+
+        data = response.json()
+        return list(data["players"].keys())
+    except Exception as e:
+        print(f"Error fetching online players: {e}")
         return []
-
-    data = response.json()
-    return list(data["players"].keys())
 
 def get_player_data_from_api(username, cache):
     """Get player data from the API and update cache"""
     url = f"https://api.wynncraft.com/v3/player/{username}?fullResult"
 
     try:
-        response = requests.get(url)
-
-        # Handle rate limiting (typically 429 status code)
-        if response.status_code == 429:
-            retry_after = int(response.headers.get('Retry-After', 5))
-            print(f"Rate limited! Waiting for {retry_after} seconds before retrying...")
-            time.sleep(retry_after)
-            # Try again after waiting
-            return get_player_data_from_api(username, cache)
+        # Use the rate limit manager for intelligent request handling
+        response = rate_limit_manager.make_request(url)
 
         if response.status_code != 200:
             print(f"Failed to get data for {username}: {response.status_code}")
@@ -494,13 +493,13 @@ def home():
 def get_loot_data():
     """Get loot data from the API"""
     try:
-        # First get the CSRF token
-        r = requests.get(f"{LOOT_API_BASE_URL}/api/tokens")
+        # First get the CSRF token using rate limit manager
+        r = rate_limit_manager.make_request(f"{LOOT_API_BASE_URL}/api/tokens")
         cookies = r.cookies
         csrf_token = cookies.get('csrf_token')
 
-        # Then get the loot data
-        r = requests.get(
+        # Then get the loot data using rate limit manager
+        r = rate_limit_manager.make_request(
             f"{LOOT_API_BASE_URL}/api/lootpool",
             cookies=cookies,
             headers={"X-CSRF-Token": csrf_token}
@@ -514,6 +513,26 @@ def get_loot_data():
     except Exception as e:
         print(f"Error fetching loot data: {e}")
         return None
+
+@app.route('/api/rate-limit-status', methods=['GET'])
+def rate_limit_status_api():
+    """API endpoint to get current rate limit status"""
+    try:
+        status_summary = rate_limit_manager.get_status_summary()
+        queue_status = rate_limit_manager.get_queue_status()
+
+        return jsonify({
+            "status": "success",
+            "timestamp": datetime.now().isoformat(),
+            "rate_limits": status_summary,
+            "queue_status": queue_status
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error_message": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
 
 @app.route('/api/region-mythic-prices', methods=['GET'])
 def region_mythic_prices_api():
