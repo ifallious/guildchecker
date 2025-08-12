@@ -470,6 +470,17 @@
                 </div>
                 <input type="number" id="min-level" min="0" max="106" value="100">
             </div>
+
+            <div class="settings-container">
+                <div class="settings-text">
+                    <div>Include Extra Message</div>
+                    <div class="description">Add "(Reply if you are interested or want to receive no further Messages)" to recruitment messages</div>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="include-extra" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
             
             <div style="text-align: center; margin-top: 20px;">
                 <button id="search-btn">Search</button>
@@ -546,21 +557,23 @@
 
             const searchBtn = document.getElementById('search-btn');
             const minLevelInput = document.getElementById('min-level');
+            const includeExtraCheckbox = document.getElementById('include-extra');
             const loadingSpan = document.getElementById('loading');
             const resultsTable = document.getElementById('results-table');
             const resultsBody = document.getElementById('results-body');
             const resultsSummary = document.getElementById('results-summary');
 
             const recruitmentMessages = [
-                "Hey, how's it going? Are you perhaps looking for a guild? (Reply if you are interested or want to recive no further Messages)",
-                "Hi! Our guild is recruiting active players. Would you be interested? (Reply if you are interested or want to recive no further Messages)",
-                "Greetings! Our guild is looking for new members. Interested in joining? (Reply if you are interested or want to recive no further Messages)",
-                "Hi! We noticed you don't have a guild yet. Want to join ours? (Reply if you are interested or want to recive no further Messages)"
+                "Hey, how's it going? Are you perhaps looking for a guild?",
+                "Hi! Our guild is recruiting active players. Would you be interested?",
+                "Greetings! Our guild is looking for new members. Interested in joining?",
+                "Hi! We noticed you don't have a guild yet. Want to join ours?"
             ];
-
+            const extra = "(Reply if you are interested or want to receive no further Messages)"
             function getRandomMessage() {
                 const randomIndex = Math.floor(Math.random() * recruitmentMessages.length);
-                return recruitmentMessages[randomIndex];
+                const baseMessage = recruitmentMessages[randomIndex];
+                return includeExtraCheckbox.checked ? baseMessage + " " + extra : baseMessage;
             }
 
             function copyToClipboard(text) {
