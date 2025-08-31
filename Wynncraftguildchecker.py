@@ -711,6 +711,42 @@ def save_mythic_item_api():
             "timestamp": datetime.now().isoformat()
         }), 500
 
+@app.route('/api/blacklist/add', methods=['GET'])
+def add_to_blacklist_api():
+    """Add a player to the blacklist via query params: player (required), reason (optional)."""
+    try:
+        player = request.args.get('player', type=str)
+        reason = request.args.get('reason', default=None, type=str)
+
+        if not player or not player.strip():
+            return jsonify({
+                "status": "error",
+                "error": "Missing required query parameter: player",
+                "timestamp": datetime.now().isoformat()
+            }), 400
+
+        success = db.add_to_blacklist(player, reason)
+        if not success:
+            return jsonify({
+                "status": "error",
+                "error": "Failed to add player to blacklist",
+                "timestamp": datetime.now().isoformat()
+            }), 500
+
+        return jsonify({
+            "status": "success",
+            "message": f"Player '{player}' has been added to the blacklist",
+            "player": player,
+            "reason": reason,
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
 if __name__ == "__main__":
     # For local development
     app.run(debug=True)

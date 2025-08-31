@@ -5,6 +5,7 @@ from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import re
+from typing import Optional
 
 # Load environment variables
 load_dotenv()
@@ -118,6 +119,58 @@ def is_blacklisted(identifier: str) -> bool:
     if not norm:
         return False
     return norm in get_blacklisted_identifiers()
+
+# New: add helper to insert into blacklist and refresh cache
+
+def add_to_blacklist(identifier: str, reason: Optional[str] = None) -> bool:
+    """Add or update a player identifier in the blacklist table and refresh in-memory cache.
+
+    Args:
+        identifier: Player name or identifier to blacklist (case-insensitive)
+        reason: Optional reason for blacklisting
+    Returns:
+        True if operation succeeded, False otherwise
+    """
+    try:
+        norm = _normalize_identifier(identifier)
+        if not norm:
+            return False
+
+        conn = get_db_connection()
+        if not conn:
+            return False
+
+        with conn.cursor() as cur:
+            cur.execute(
+                '''
+                INSERT INTO blacklist (identifier, reason, created_at)
+                VALUES (%s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (identifier) DO UPDATE SET
+                    reason = EXCLUDED.reason,
+                    created_at = CURRENT_TIMESTAMP
+                ''',
+                (norm, reason)
+            )
+        conn.close()
+
+        # Update in-memory cache immediately to avoid TTL delay
+        global _blacklist_cache, _blacklist_cache_fetched_at
+        try:
+            _blacklist_cache.add(norm)
+        except Exception:
+            _blacklist_cache = {norm}
+        _blacklist_cache_fetched_at = datetime.now()
+
+        return True
+    except Exception as e:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+        print(f"Error adding to blacklist: {e}")
+        return False
+
 
 def get_db_connection():
     """Establish a connection to the PostgreSQL database"""
