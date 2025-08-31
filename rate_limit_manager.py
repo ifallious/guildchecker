@@ -112,10 +112,7 @@ class TokenManager:
         if rate_limit_info.is_rate_limited():
             return False
 
-        # Check if token should be throttled
-        if rate_limit_info.should_throttle(threshold=5):  # Conservative threshold for token rotation
-            return False
-
+        # Do not throttle based on remaining; treat as available until actually rate limited
         return True
 
     def update_token_rate_limit(self, token: str, rate_limit_info: RateLimitInfo) -> None:
@@ -177,6 +174,16 @@ class TokenManager:
                 'total_tokens': len(self.tokens),
                 'rotation_enabled': len(self.tokens) > 1
             }
+
+    def has_available_token(self) -> bool:
+        """Return True if any configured token is currently available (not rate limited)."""
+        if not self.tokens:
+            return False
+        with self._lock:
+            for token in self.tokens:
+                if self._is_token_available(token):
+                    return True
+            return False
 
 
 @dataclass
@@ -528,8 +535,13 @@ class RateLimitManager:
         endpoint_key = self._get_endpoint_key(url)
 
         with self._lock:
+            # If we have multiple API tokens and at least one is available, do not delay
+            if endpoint_key in ['wynncraft_player_api', 'wynncraft_api_v3'] and self.token_manager:
+                if self.token_manager.has_available_token():
+                    return 0.0
+
             if endpoint_key not in self._rate_limits:
-                return self.default_delay
+                return 0.0
 
             info = self._rate_limits[endpoint_key]
 
@@ -541,20 +553,8 @@ class RateLimitManager:
                 )
                 return delay
 
-            # If we should throttle, calculate progressive delay
-            if info.should_throttle(self.throttle_threshold):
-                if info.remaining is not None and info.limit is not None:
-                    # Calculate delay based on remaining quota
-                    # More aggressive throttling as we approach the limit
-                    remaining_ratio = info.remaining / info.limit
-                    if remaining_ratio <= 0.1:  # Less than 10% remaining
-                        return 2.0  # 2 second delay
-                    elif remaining_ratio <= 0.2:  # Less than 20% remaining
-                        return 1.0  # 1 second delay
-                    else:
-                        return 0.5  # 0.5 second delay
-
-            return self.default_delay
+            # Remove throttle-based delays; proceed without delay until actually rate limited
+            return 0.0
 
     def is_cache_valid(self, url: str) -> bool:
         """
@@ -646,15 +646,19 @@ class RateLimitManager:
                         f"Rate limited (429) for {url}. Retrying after {retry_after}s"
                     )
 
+                    rotated = False
                     # If we have token rotation, try to get a different token
-                    if self.token_manager and current_token:
+                    if self.token_manager:
                         new_token = self.token_manager.get_available_token()
                         if new_token and new_token != current_token:
-                            self._logger.info(f"Rotating from token {current_token[:8]}... to {new_token[:8]}...")
+                            self._logger.info(f"Rotating from token {current_token[:8] + '...' if current_token else ''} to {new_token[:8]}...")
                             kwargs['headers']['Authorization'] = f'Bearer {new_token}'
                             current_token = new_token
+                            rotated = True
 
-                    time.sleep(retry_after)
+                    # Only wait if we could not rotate to a different available token
+                    if not rotated:
+                        time.sleep(retry_after)
 
                     # Update our rate limit info and try again
                     self.update_rate_limit_info(url, response, current_token)
