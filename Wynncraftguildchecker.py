@@ -805,39 +805,17 @@ def guild_ranking_api():
                         details = future.result()
                         if not details:
                             continue
-                        # Expecting a members list with online flag
-                        members = details.get('members') or details.get('Members') or []
-                        online_members = []
-                        for m in members:
-                            username = m.get('username') or m.get('name') or m.get('player')
-                            is_online = m.get('online')
-                            if not username or not is_online:
-                                continue
-                            if db.is_blacklisted(username):
-                                continue
-                            # Pull level from cache when available
-                            cached = db.get_player_from_cache(username) or {}
-                            lvl = cached.get('highest_level', 0)
-                            if lvl < min_level:
-                                continue
-                            online_members.append({
-                                "username": username,
-                                "level": lvl
-                            })
+                        # Use the 'online' field to get only the online member count per guild
+                        try:
+                            online_count = int(details.get('online') or 0)
+                        except Exception:
+                            online_count = 0
 
-                        if online_members:
-                            online_members.sort(key=lambda x: x["level"], reverse=True)
-                            enriched_guilds[gname] = {
-                                "guild_name": gname,
-                                "online_members": len(online_members),
-                                "members": online_members
-                            }
-                        else:
-                            enriched_guilds[gname] = {
-                                "guild_name": gname,
-                                "online_members": 0,
-                                "members": []
-                            }
+                        enriched_guilds[gname] = {
+                            "guild_name": gname,
+                            "online_members": online_count,
+                            "members": []
+                        }
                     except Exception as e:
                         print(f"Error enriching guild {gname}: {e}")
 
