@@ -125,6 +125,29 @@ def get_player_data_from_api(username, cache):
     print(f"Successfully processed {username}: Guild={guild}, Level={highest_level}")
     return username, guild, highest_level
 
+@timeout_handler
+def get_guild_details(guild_name, identifier=None):
+    """Get guild details from the Wynncraft API, optionally using an identifier."""
+    try:
+        safe_name = requests.utils.quote(guild_name, safe='')
+        url = f"https://api.wynncraft.com/v3/guild/{safe_name}"
+        params = {}
+        # Allow override via function arg, query param, or env var
+        if identifier is None:
+            identifier = 'uuid'
+        if identifier:
+            params['identifier'] = identifier
+
+        print(f"Fetching guild details for {guild_name}")
+        response = rate_limit_manager.make_request(url, params=params)
+        if response.status_code != 200:
+            print(f"Failed to get guild details for {guild_name}: {response.status_code}")
+            return None
+        return response.json()
+    except Exception as e:
+        print(f"Error fetching guild details for {guild_name}: {e}")
+        return None
+
 def check_player_guilds(max_workers=10, delay=0.2, min_level=0):
     """Check guilds for all online players"""
     # Load cached player data from database
@@ -749,9 +772,13 @@ def save_mythic_item_api():
 
 @app.route('/api/guild-ranking', methods=['GET'])
 def guild_ranking_api():
-    """API endpoint to get guilds ranked by number of online members, filtered by minimum level"""
-    # Get minimum level from query parameter, default to 0
+    """API endpoint to get guilds ranked by number of online members, filtered by minimum level.
+
+    If possible, enrich counts using the guild endpoint's online field for accuracy.
+    """
+    # Get minimum level and optional identifier for guild API
     min_level = request.args.get('min_level', default=0, type=int)
+    identifier = request.args.get('identifier', default=os.environ.get('GUILD_API_IDENTIFIER'), type=str)
 
     try:
         # Get total number of online players first
@@ -761,8 +788,62 @@ def guild_ranking_api():
         # Use fewer workers and longer delay to avoid rate limiting
         results = check_player_guilds(max_workers=10, delay=0.2)
 
-        # Get guild ranking filtered by minimum level
-        guild_ranking = get_guild_ranking(results, min_level)
+        # Default ranking from player endpoint/cache as baseline
+        baseline_guild_ranking = get_guild_ranking(results, min_level)
+
+        # Attempt to use guild API for accurate online status per guild
+        # Build set of guild names from baseline
+        guild_names = [g["guild_name"] for g in baseline_guild_ranking]
+
+        enriched_guilds = {}
+        if guild_names:
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                future_to_guild = {executor.submit(get_guild_details, gname, identifier): gname for gname in guild_names}
+                for future in future_to_guild:
+                    gname = future_to_guild[future]
+                    try:
+                        details = future.result()
+                        if not details:
+                            continue
+                        # Expecting a members list with online flag
+                        members = details.get('members') or details.get('Members') or []
+                        online_members = []
+                        for m in members:
+                            username = m.get('username') or m.get('name') or m.get('player')
+                            is_online = m.get('online')
+                            if not username or not is_online:
+                                continue
+                            if db.is_blacklisted(username):
+                                continue
+                            # Pull level from cache when available
+                            cached = db.get_player_from_cache(username) or {}
+                            lvl = cached.get('highest_level', 0)
+                            if lvl < min_level:
+                                continue
+                            online_members.append({
+                                "username": username,
+                                "level": lvl
+                            })
+
+                        if online_members:
+                            online_members.sort(key=lambda x: x["level"], reverse=True)
+                            enriched_guilds[gname] = {
+                                "guild_name": gname,
+                                "online_members": len(online_members),
+                                "members": online_members
+                            }
+                        else:
+                            enriched_guilds[gname] = {
+                                "guild_name": gname,
+                                "online_members": 0,
+                                "members": []
+                            }
+                    except Exception as e:
+                        print(f"Error enriching guild {gname}: {e}")
+
+        # Use enriched results if we have any, else fallback to baseline
+        guild_ranking = list(enriched_guilds.values()) if enriched_guilds else baseline_guild_ranking
+        guild_ranking.sort(key=lambda x: x["online_members"], reverse=True)
 
         # Get cache stats from database
         cache_size = db.get_cache_size()
