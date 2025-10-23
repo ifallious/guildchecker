@@ -130,7 +130,7 @@ def get_guild_details(guild_name, identifier=None):
     """Get guild details from the Wynncraft API, optionally using an identifier."""
     try:
         safe_name = requests.utils.quote(guild_name, safe='')
-        url = f"https://api.wynncraft.com/v3/guild/{safe_name}"
+        url = f"https://api.wynncraft.com/v3/guild/{guild_name}"
         params = {}
         # Allow override via function arg, query param, or env var
         if identifier is None:
