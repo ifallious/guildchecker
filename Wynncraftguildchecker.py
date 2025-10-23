@@ -207,6 +207,42 @@ def get_players_without_guild(results, min_level=0):
     no_guild_high_level_players.sort(key=lambda x: x["level"], reverse=True)
     return no_guild_high_level_players
 
+def get_guild_ranking(results, min_level=0):
+    """Get guilds ranked by number of online members, filtered by minimum level"""
+    guild_members = {}
+    
+    for player, data in results.items():
+        # Skip blacklisted players entirely
+        if db.is_blacklisted(player):
+            continue
+        guild = data["guild"]
+        level = data["highest_level"]
+        
+        # Only count players that meet the minimum level requirement
+        if guild and level >= min_level:
+            if guild not in guild_members:
+                guild_members[guild] = {
+                    "guild_name": guild,
+                    "online_members": 0,
+                    "members": []
+                }
+            
+            guild_members[guild]["online_members"] += 1
+            guild_members[guild]["members"].append({
+                "username": player,
+                "level": level
+            })
+    
+    # Convert to list and sort by number of online members (descending)
+    guild_ranking = list(guild_members.values())
+    guild_ranking.sort(key=lambda x: x["online_members"], reverse=True)
+    
+    # Sort members within each guild by level (descending)
+    for guild in guild_ranking:
+        guild["members"].sort(key=lambda x: x["level"], reverse=True)
+    
+    return guild_ranking
+
 @app.route('/api/no-guild-players', methods=['GET'])
 def no_guild_players_api():
     """API endpoint to get players without a guild, filtered by minimum level"""
@@ -710,6 +746,115 @@ def save_mythic_item_api():
             "error": str(e),
             "timestamp": datetime.now().isoformat()
         }), 500
+
+@app.route('/api/guild-ranking', methods=['GET'])
+def guild_ranking_api():
+    """API endpoint to get guilds ranked by number of online members, filtered by minimum level"""
+    # Get minimum level from query parameter, default to 0
+    min_level = request.args.get('min_level', default=0, type=int)
+
+    try:
+        # Get total number of online players first
+        all_online_players = get_online_players()
+        total_online_players = len(all_online_players)
+
+        # Use fewer workers and longer delay to avoid rate limiting
+        results = check_player_guilds(max_workers=10, delay=0.2)
+
+        # Get guild ranking filtered by minimum level
+        guild_ranking = get_guild_ranking(results, min_level)
+
+        # Get cache stats from database
+        cache_size = db.get_cache_size()
+        checked_players_count = len(results)
+
+        # Calculate total guild members online
+        total_guild_members = sum(guild["online_members"] for guild in guild_ranking)
+
+        # Format response
+        response = {
+            "timestamp": datetime.now().isoformat(),
+            "min_level": min_level,
+            "total_guilds": len(guild_ranking),
+            "total_guild_members_online": total_guild_members,
+            "guilds": guild_ranking,
+            "status": "success",
+            "cache_size": cache_size,
+            "checked_players": checked_players_count,
+            "total_online_players": total_online_players,
+            "online_players_processed_percent": round(checked_players_count / total_online_players * 100 if total_online_players > 0 else 0, 1)
+        }
+
+        return jsonify(response)
+    except Exception as e:
+        # Try to get guild ranking from the database
+        try:
+            # Get all players from database
+            all_cached_players = db.get_all_players_from_cache()
+
+            # Filter for players with guilds and meeting min level, excluding blacklisted
+            cached_guild_members = {}
+            for username, data in all_cached_players.items():
+                if db.is_blacklisted(username):
+                    continue
+                guild = data.get("guild")
+                level = data.get("highest_level", 0)
+                
+                if guild and level >= min_level:
+                    if guild not in cached_guild_members:
+                        cached_guild_members[guild] = {
+                            "guild_name": guild,
+                            "online_members": 0,
+                            "members": []
+                        }
+                    
+                    cached_guild_members[guild]["online_members"] += 1
+                    cached_guild_members[guild]["members"].append({
+                        "username": username,
+                        "level": level
+                    })
+
+            # Convert to list and sort by number of online members (descending)
+            cached_guild_ranking = list(cached_guild_members.values())
+            cached_guild_ranking.sort(key=lambda x: x["online_members"], reverse=True)
+            
+            # Sort members within each guild by level (descending)
+            for guild in cached_guild_ranking:
+                guild["members"].sort(key=lambda x: x["level"], reverse=True)
+
+            # Try to get the total number of online players
+            try:
+                all_online_players = get_online_players()
+                total_online_players = len(all_online_players)
+            except:
+                total_online_players = 0
+
+            # Get cache stats
+            cache_size = db.get_cache_size()
+            total_guild_members = sum(guild["online_members"] for guild in cached_guild_ranking)
+
+            # Return a partial response with error information
+            response = {
+                "timestamp": datetime.now().isoformat(),
+                "min_level": min_level,
+                "total_guilds": len(cached_guild_ranking),
+                "total_guild_members_online": total_guild_members,
+                "guilds": cached_guild_ranking,
+                "status": "error",
+                "error_message": str(e),
+                "cache_size": cache_size,
+                "is_partial_result": True,
+                "total_online_players": total_online_players
+            }
+
+            return jsonify(response), 500
+        except Exception as inner_e:
+            # If all else fails, return a basic error response
+            return jsonify({
+                "status": "error",
+                "error_message": f"Error: {str(e)}. Additional error: {str(inner_e)}",
+                "timestamp": datetime.now().isoformat()
+            }), 500
 
 @app.route('/api/blacklist/add', methods=['GET'])
 def add_to_blacklist_api():
