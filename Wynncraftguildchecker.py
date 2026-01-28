@@ -20,7 +20,9 @@ CACHE_REFRESH_INTERVAL_MINUTES = 5
 # Base URL for the loot API
 LOOT_API_BASE_URL = "https://nori.fish"
 
-app = Flask(__name__, static_folder='public')
+# Ensure static folder is found correctly by using absolute path
+basedir = os.path.abspath(os.path.dirname(__file__))
+app = Flask(__name__, static_folder=os.path.join(basedir, 'public'))
 
 
 class TimeoutError(Exception):
