@@ -13,7 +13,7 @@
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "public/index.html"
+      "dest": "api/index.py"
     }
   ],
   "env": {
