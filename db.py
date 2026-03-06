@@ -455,5 +455,45 @@ def get_mythic_items():
         print(f"Error getting mythic items: {e}")
         return {}
 
+def clear_old_blacklist_entries(months: int = 6) -> int:
+    """Remove blacklist entries older than the specified number of months.
+
+    Args:
+        months: Number of months; entries older than this are deleted. Default 6.
+    Returns:
+        Number of deleted entries, or -1 on error.
+    """
+    global _blacklist_cache, _blacklist_cache_fetched_at
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return -1
+
+        cutoff = datetime.now() - timedelta(days=months * 30)
+        with conn.cursor() as cur:
+            cur.execute('''
+                DELETE FROM blacklist
+                WHERE created_at < %s
+            ''', (cutoff,))
+            deleted_count = cur.rowcount
+
+        conn.close()
+
+        # Refresh in-memory cache
+        _blacklist_cache = _load_blacklist_from_db()
+        _blacklist_cache_fetched_at = datetime.now()
+
+        print(f"Cleared {deleted_count} blacklist entries older than {months} months")
+        return deleted_count
+    except Exception as e:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+        print(f"Error clearing old blacklist entries: {e}")
+        return -1
+
+
 # Initialize the database tables on module import
 create_tables()

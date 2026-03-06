@@ -292,6 +292,9 @@ def no_guild_players_api():
     min_activity = request.args.get('min_activity', default=0, type=int)
 
     try:
+        # Clear blacklist entries older than 6 months
+        db.clear_old_blacklist_entries()
+
         # Get total number of online players first
         all_online_players = get_online_players()
         total_online_players = len(all_online_players)
@@ -396,6 +399,9 @@ def no_guild_players_stream_api():
     @stream_with_context
     def generate():
         try:
+            # Clear blacklist entries older than 6 months
+            db.clear_old_blacklist_entries()
+
             # Send initial response header
             yield json.dumps({
                 "type": "init",
