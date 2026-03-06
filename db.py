@@ -196,8 +196,22 @@ def create_tables():
                     username VARCHAR(64) PRIMARY KEY,
                     guild VARCHAR(64),
                     highest_level INTEGER,
+                    activity INTEGER DEFAULT 0,
                     timestamp TIMESTAMP
                 )
+            ''')
+
+            # Add activity column if it doesn't exist (migration for existing DBs)
+            cur.execute('''
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'player_cache' AND column_name = 'activity'
+                    ) THEN
+                        ALTER TABLE player_cache ADD COLUMN activity INTEGER DEFAULT 0;
+                    END IF;
+                END $$;
             ''')
 
             # Metadata table to store app information
@@ -232,7 +246,7 @@ def create_tables():
         print(f"Error creating tables: {e}")
         return False
 
-def save_player_to_cache(username, guild, highest_level):
+def save_player_to_cache(username, guild, highest_level, activity=0):
     """Save a player's data to the cache"""
     try:
         conn = get_db_connection()
@@ -241,16 +255,17 @@ def save_player_to_cache(username, guild, highest_level):
 
         with conn.cursor() as cur:
             cur.execute('''
-                INSERT INTO player_cache (username, guild, highest_level, timestamp)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO player_cache (username, guild, highest_level, activity, timestamp)
+                VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (username)
                 DO UPDATE SET
                     guild = %s,
                     highest_level = %s,
+                    activity = %s,
                     timestamp = %s
             ''', (
-                username, guild, highest_level, datetime.now(),
-                guild, highest_level, datetime.now()
+                username, guild, highest_level, activity, datetime.now(),
+                guild, highest_level, activity, datetime.now()
             ))
 
         conn.close()
@@ -268,7 +283,7 @@ def get_player_from_cache(username):
 
         with conn.cursor() as cur:
             cur.execute('''
-                SELECT username, guild, highest_level, timestamp
+                SELECT username, guild, highest_level, activity, timestamp
                 FROM player_cache
                 WHERE username = %s
             ''', (username,))
@@ -291,7 +306,7 @@ def get_all_players_from_cache():
         cache = {}
         with conn.cursor() as cur:
             cur.execute('''
-                SELECT username, guild, highest_level, timestamp
+                SELECT username, guild, highest_level, activity, timestamp
                 FROM player_cache
             ''')
 
@@ -299,6 +314,7 @@ def get_all_players_from_cache():
                 cache[row['username']] = {
                     'guild': row['guild'],
                     'highest_level': row['highest_level'],
+                    'activity': row['activity'] or 0,
                     'timestamp': row['timestamp'].isoformat() if row['timestamp'] else None
                 }
 

@@ -45,8 +45,8 @@ def timeout_handler(func):
             if func.__name__ == 'get_online_players':
                 return []
             elif func.__name__ == 'get_player_data_from_api':
-                # Return username, None guild, 0 level
-                return args[0] if args else 'unknown', None, 0
+                # Return username, None guild, 0 level, 0 activity
+                return args[0] if args else 'unknown', None, 0, 0
             elif func.__name__ == 'get_loot_data':
                 return None
             else:
@@ -57,7 +57,7 @@ def timeout_handler(func):
             if func.__name__ == 'get_online_players':
                 return []
             elif func.__name__ == 'get_player_data_from_api':
-                return args[0] if args else 'unknown', None, 0
+                return args[0] if args else 'unknown', None, 0, 0
             elif func.__name__ == 'get_loot_data':
                 return None
             else:
@@ -92,13 +92,13 @@ def get_player_data_from_api(username, cache):
 
     if response.status_code != 200:
         print(f"Failed to get data for {username}: {response.status_code}")
-        return username, None, 0
+        return username, None, 0, 0
 
     data = response.json()
     # Check if data is valid and has the expected structure
     if not data:
         print(f"Warning: Empty data for {username}")
-        return username, None, 0
+        return username, None, 0, 0
 
     # Get guild information
     guild = None
@@ -113,19 +113,30 @@ def get_player_data_from_api(username, cache):
             if 'level' in char_data:
                 highest_level = max(highest_level, char_data.get('level', 0))
 
+    # Calculate activity: wars + raids.total from globalData
+    activity = 0
+    if 'globalData' in data and data['globalData']:
+        global_data = data['globalData']
+        wars = global_data.get('wars', 0) or 0
+        raids_total = 0
+        if 'raids' in global_data and isinstance(global_data['raids'], dict):
+            raids_total = global_data['raids'].get('total', 0) or 0
+        activity = wars + raids_total
+
     # Save the player data directly to the database
-    db.save_player_to_cache(username, guild, highest_level)
+    db.save_player_to_cache(username, guild, highest_level, activity)
 
     # Also update the in-memory cache for this request
     if username in cache:
         cache[username] = {
             "guild": guild,
             "highest_level": highest_level,
+            "activity": activity,
             "timestamp": datetime.now().isoformat()
         }
 
-    print(f"Successfully processed {username}: Guild={guild}, Level={highest_level}")
-    return username, guild, highest_level
+    print(f"Successfully processed {username}: Guild={guild}, Level={highest_level}, Activity={activity}")
+    return username, guild, highest_level, activity
 
 @timeout_handler
 def get_guild_details(guild_name, identifier=None):
@@ -177,7 +188,8 @@ def check_player_guilds(max_workers=10, delay=0.2, min_level=0):
         player_data = cache[username]
         results[username] = {
             "guild": player_data["guild"],
-            "highest_level": player_data["highest_level"]
+            "highest_level": player_data["highest_level"],
+            "activity": player_data.get("activity", 0)
         }
         print(f"Using cached data for {username}: Guild: {player_data['guild'] if player_data['guild'] else 'None'}, Level: {player_data['highest_level']}")
 
@@ -198,21 +210,22 @@ def check_player_guilds(max_workers=10, delay=0.2, min_level=0):
             processed = 0
             for future in future_to_username:
                 try:
-                    username, guild, highest_level = future.result()
+                    username, guild, highest_level, activity = future.result()
                     processed += 1
 
                     results[username] = {
                         "guild": guild,
-                        "highest_level": highest_level
+                        "highest_level": highest_level,
+                        "activity": activity
                     }
 
-                    print(f"Progress: {processed}/{total_to_process} - {username}: Guild: {guild if guild else 'None'}, Level: {highest_level}")
+                    print(f"Progress: {processed}/{total_to_process} - {username}: Guild: {guild if guild else 'None'}, Level: {highest_level}, Activity: {activity}")
                 except Exception as e:
                     print(f"Error processing player: {e}")
     return results
 
-def get_players_without_guild(results, min_level=0):
-    """Get players without a guild, filtered by minimum level"""
+def get_players_without_guild(results, min_level=0, min_activity=0):
+    """Get players without a guild, filtered by minimum level and minimum activity"""
     no_guild_high_level_players = []
 
     for player, data in results.items():
@@ -221,11 +234,13 @@ def get_players_without_guild(results, min_level=0):
             continue
         guild = data["guild"]
         level = data["highest_level"]
+        activity = data.get("activity", 0)
 
-        if not guild and level >= min_level:
+        if not guild and level >= min_level and activity >= min_activity:
             no_guild_high_level_players.append({
                 "username": player,
-                "level": level
+                "level": level,
+                "activity": activity
             })
 
     # Sort by level in descending order
@@ -270,9 +285,11 @@ def get_guild_ranking(results, min_level=0):
 
 @app.route('/api/no-guild-players', methods=['GET'])
 def no_guild_players_api():
-    """API endpoint to get players without a guild, filtered by minimum level"""
+    """API endpoint to get players without a guild, filtered by minimum level and minimum activity"""
     # Get minimum level from query parameter, default to 0
     min_level = request.args.get('min_level', default=0, type=int)
+    # Get minimum activity from query parameter, default to 0 (optional filter)
+    min_activity = request.args.get('min_activity', default=0, type=int)
 
     try:
         # Get total number of online players first
@@ -282,8 +299,8 @@ def no_guild_players_api():
         # Use fewer workers and longer delay to avoid rate limiting
         results = check_player_guilds(max_workers=10, delay=0.2)
 
-        # Get players without a guild filtered by minimum level
-        no_guild_players = get_players_without_guild(results, min_level)
+        # Get players without a guild filtered by minimum level and activity
+        no_guild_players = get_players_without_guild(results, min_level, min_activity)
 
         # Get cache stats from database
         cache_size = db.get_cache_size()
@@ -293,6 +310,7 @@ def no_guild_players_api():
         response = {
             "timestamp": datetime.now().isoformat(),
             "min_level": min_level,
+            "min_activity": min_activity,
             "total_players": len(no_guild_players),
             "players": no_guild_players,
             "status": "success",
@@ -314,10 +332,12 @@ def no_guild_players_api():
             for username, data in all_cached_players.items():
                 if db.is_blacklisted(username):
                     continue
-                if data.get("guild") is None and data.get("highest_level", 0) >= min_level:
+                player_activity = data.get("activity", 0)
+                if data.get("guild") is None and data.get("highest_level", 0) >= min_level and player_activity >= min_activity:
                     cached_no_guild_players.append({
                         "username": username,
-                        "level": data.get("highest_level", 0)
+                        "level": data.get("highest_level", 0),
+                        "activity": player_activity
                     })
 
             # Sort by level
@@ -369,8 +389,9 @@ def refresh_cache_api():
 
 @app.route('/api/no-guild-players-stream', methods=['GET'])
 def no_guild_players_stream_api():
-    """Streaming API endpoint to get players without a guild, filtered by minimum level"""
+    """Streaming API endpoint to get players without a guild, filtered by minimum level and minimum activity"""
     min_level = request.args.get('min_level', default=0, type=int)
+    min_activity = request.args.get('min_activity', default=0, type=int)
 
     @stream_with_context
     def generate():
@@ -447,15 +468,17 @@ def no_guild_players_stream_api():
                     player_data = cache[username]
                     guild = player_data["guild"]
                     highest_level = player_data["highest_level"]
+                    player_activity = player_data.get("activity", 0)
 
                     # Respect blacklist, skip entirely
                     if db.is_blacklisted(username):
                         return None
-                    # Only return no-guild players that meet the level requirement
-                    if guild is None and highest_level >= min_level:
+                    # Only return no-guild players that meet the level and activity requirements
+                    if guild is None and highest_level >= min_level and player_activity >= min_activity:
                         return {
                             "username": username,
                             "level": highest_level,
+                            "activity": player_activity,
                             "from_cache": True
                         }
                     return None
@@ -516,18 +539,19 @@ def no_guild_players_stream_api():
                 # Process fetch results - these will take longer due to API rate limits
                 for future in concurrent.futures.as_completed(fetch_futures):
                     try:
-                        username, guild, highest_level = future.result()
+                        username, guild, highest_level, player_activity = future.result()
                         completed_tasks += 1
                         processed_count += 1
 
                         # Respect blacklist
                         if db.is_blacklisted(username):
                             continue
-                        # Only send no-guild players that meet the level requirement
-                        if guild is None and highest_level >= min_level:
+                        # Only send no-guild players that meet the level and activity requirements
+                        if guild is None and highest_level >= min_level and player_activity >= min_activity:
                             player_info = {
                                 "username": username,
                                 "level": highest_level,
+                                "activity": player_activity,
                                 "from_cache": False
                             }
                             no_guild_players.append(player_info)
@@ -569,7 +593,8 @@ def no_guild_players_stream_api():
                     "total_online_players": total_online_players,
                     "online_players_processed_percent": round(processed_count / total_online_players * 100 if total_online_players > 0 else 0, 1),
                     "timestamp": datetime.now().isoformat(),
-                    "min_level": min_level
+                    "min_level": min_level,
+                    "min_activity": min_activity
                 }) + '\n'
 
             finally:
